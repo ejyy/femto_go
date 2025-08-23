@@ -27,7 +27,7 @@ func main() {
 		atomic.AddUint64(&totalOutputs, 1) // Increment to demonstrate messages received back
 	})
 
-	const N = 10_000_000
+	const N = 30_000_000
 	start := time.Now()
 
 	for i := 0; i < N; i++ {

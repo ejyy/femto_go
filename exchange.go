@@ -3,7 +3,7 @@ package main
 const (
 	MAX_SYMBOLS        = 1 << 8  // 256 trading symbols
 	MAX_PRICE_LEVELS   = 1 << 14 // 16,384 price ticks
-	MAX_ORDERS         = 1 << 24 // 16M total orders
+	MAX_ORDERS         = 1 << 25 // 33M total orders
 	DISTRIBUTOR_BUFFER = 1 << 10 // 1024 event size
 )
 
