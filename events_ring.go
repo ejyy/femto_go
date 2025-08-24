@@ -61,8 +61,7 @@ type OutputEvent struct {
 	Trader         TraderID
 	Symbol         Symbol
 	Side           Side
-	CounterOrderID OrderID  // For executions (counterparty OrderID)
-	CounterTrader  TraderID // For executions (counterparty TraderID)
+	CounterOrderID OrderID // For executions (counterparty OrderID)
 }
 
 // Input command received by exchange engine (related to exchange Order struct)

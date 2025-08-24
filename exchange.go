@@ -31,14 +31,10 @@ type Engine struct {
 
 // Order with intrusive linked list for FIFO queues (price/time priority)
 type Order struct {
-	ID     OrderID
-	Prev   OrderID // Previous order in PriceLevel queue
-	Next   OrderID // Next order in PriceLevel queue
-	Price  Price
-	Size   Size
-	Trader TraderID
-	Symbol Symbol
-	Side   Side
+	Prev  OrderID // Previous order in PriceLevel queue
+	Next  OrderID // Next order in PriceLevel queue
+	Level *PriceLevel
+	Size  Size
 }
 
 // Order book with separate bid/ask price levels
@@ -83,15 +79,11 @@ func (e *Engine) Limit(symbol Symbol, side Side, price Price, size Size, trader 
 
 	// Generate unique order ID
 	e.orderID++
+	newOrderID := e.orderID
 
 	// Build Order object based on function parameters
 	order := Order{
-		ID:     e.orderID,
-		Symbol: symbol,
-		Side:   side,
-		Price:  price,
-		Size:   size,
-		Trader: trader,
+		Size: size,
 	}
 
 	// TODO: Consider pooling / reuse of Order array when cancelled
@@ -100,7 +92,7 @@ func (e *Engine) Limit(symbol Symbol, side Side, price Price, size Size, trader 
 	// Report order receipt
 	e.outputRing.Push(OutputEvent{
 		Type:    ORDER_EVENT,
-		OrderID: order.ID,
+		OrderID: newOrderID,
 		Price:   price,
 		Size:    size,
 		Trader:  trader,
@@ -110,35 +102,35 @@ func (e *Engine) Limit(symbol Symbol, side Side, price Price, size Size, trader 
 
 	// Lookup and match according to symbol
 	book := &e.books[symbol]
-	remaining := e.match(book, &order)
+	remaining := e.match(book, &order, symbol, side, price, trader, newOrderID)
 
 	// Add unfilled portion to book
 	if remaining > 0 {
 		order.Size = remaining
-		e.orders[order.ID] = order
-		e.addToBook(book, &order)
+		e.orders[newOrderID] = order
+		e.addToBook(book, &order, side, price, newOrderID)
 	}
 }
 
 // Match incoming order against opposite side of book
-func (e *Engine) match(book *OrderBook, order *Order) Size {
+func (e *Engine) match(book *OrderBook, order *Order, oSymbol Symbol, oSide Side, oPrice Price, oTrader TraderID, oID OrderID) Size {
 	remaining := order.Size
 
 	// TODO: Only update best when price level exhausted, else wasteful
 	// Bitmap to represent Pricelevels when density low better than 'walking'
 
-	if order.Side == Bid {
+	if oSide == Bid {
 		// Buy order matches against asks at or below bid price
-		for remaining > 0 && book.askMin < MAX_PRICE_LEVELS && book.askMin <= order.Price {
-			remaining = e.matchLevel(&book.askLevels[book.askMin], order, remaining, book.askMin)
+		for remaining > 0 && book.askMin < MAX_PRICE_LEVELS && book.askMin <= oPrice {
+			remaining = e.matchLevel(&book.askLevels[book.askMin], remaining, book.askMin, oSymbol, oTrader, oID)
 			if remaining > 0 {
 				book.updateBestAsk() // Find next best ask
 			}
 		}
 	} else {
 		// Sell order matches against bids at or above ask price
-		for remaining > 0 && book.bidMax > 0 && book.bidMax >= order.Price {
-			remaining = e.matchLevel(&book.bidLevels[book.bidMax], order, remaining, book.bidMax)
+		for remaining > 0 && book.bidMax > 0 && book.bidMax >= oPrice {
+			remaining = e.matchLevel(&book.bidLevels[book.bidMax], remaining, book.bidMax, oSymbol, oTrader, oID)
 			if remaining > 0 {
 				book.updateBestBid() // Find next best bid
 			}
@@ -171,7 +163,7 @@ func (book *OrderBook) updateBestAsk() {
 }
 
 // Execute trades against orders at specific price level (FIFO)
-func (e *Engine) matchLevel(level *PriceLevel, order *Order, remaining Size, price Price) Size {
+func (e *Engine) matchLevel(level *PriceLevel, remaining Size, price Price, oSymbol Symbol, oTrader TraderID, oID OrderID) Size {
 	for currentID := level.head; currentID != 0 && remaining > 0; {
 		counterOrder := &e.orders[currentID]
 		nextID := counterOrder.Next // Save before potential unlink
@@ -181,13 +173,12 @@ func (e *Engine) matchLevel(level *PriceLevel, order *Order, remaining Size, pri
 		// Report trade execution
 		e.outputRing.Push(OutputEvent{
 			Type:           EXECUTION_EVENT,
-			OrderID:        order.ID,
+			OrderID:        oID,
 			Price:          price, // Trade at resting order price
 			Size:           fillSize,
-			Trader:         order.Trader,
-			Symbol:         order.Symbol,
+			Trader:         oTrader,
+			Symbol:         oSymbol,
 			CounterOrderID: currentID,
-			CounterTrader:  counterOrder.Trader,
 		})
 
 		remaining -= fillSize
@@ -205,35 +196,37 @@ func (e *Engine) matchLevel(level *PriceLevel, order *Order, remaining Size, pri
 }
 
 // Insert order into appropriate price level queue (FIFO)
-func (e *Engine) addToBook(book *OrderBook, order *Order) {
+func (e *Engine) addToBook(book *OrderBook, order *Order, oSide Side, oPrice Price, oID OrderID) {
 	var level *PriceLevel
 
-	if order.Side == Bid {
-		level = &book.bidLevels[order.Price]
+	if oSide == Bid {
+		level = &book.bidLevels[oPrice]
 		// Update best bid if this is higher
-		if order.Price > book.bidMax {
-			book.bidMax = order.Price
+		if oPrice > book.bidMax {
+			book.bidMax = oPrice
 		}
 	} else {
-		level = &book.askLevels[order.Price]
+		level = &book.askLevels[oPrice]
 		// Update best ask if this is lower
-		if order.Price < book.askMin {
-			book.askMin = order.Price
+		if oPrice < book.askMin {
+			book.askMin = oPrice
 		}
 	}
+
+	order.Level = level
 
 	// Initialize empty level or append to tail
 	if level.head == 0 {
-		level.head = order.ID
-		level.tail = order.ID
+		level.head = oID
+		level.tail = oID
 	} else {
 		tail := &e.orders[level.tail]
-		tail.Next = order.ID
+		tail.Next = oID
 		order.Prev = level.tail
-		level.tail = order.ID
+		level.tail = oID
 	}
 
-	e.orders[order.ID] = *order
+	e.orders[oID] = *order
 	level.size++
 }
 
@@ -253,23 +246,13 @@ func (e *Engine) Cancel(orderID OrderID) {
 		return
 	}
 
-	// Find price level and unlink order
-	var level *PriceLevel
-	book := &e.books[order.Symbol]
-	if order.Side == Bid {
-		level = &book.bidLevels[order.Price]
-	} else {
-		level = &book.askLevels[order.Price]
-	}
-
-	e.unlink(level, orderID)
+	e.unlink(order.Level, orderID)
 	order.Size = 0 // Mark as cancelled
 
 	// Report order cancellation
 	e.outputRing.Push(OutputEvent{
 		Type:    CANCEL_EVENT,
 		OrderID: orderID,
-		Symbol:  order.Symbol,
 	})
 }
 
