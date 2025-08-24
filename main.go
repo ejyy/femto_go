@@ -56,5 +56,5 @@ func main() {
 
 	elapsed := time.Since(start)
 	nsPerOp := float64(elapsed.Nanoseconds()) / float64(N)
-	fmt.Printf("%d orders processed in %v -> %.2f ns/op\n", N, elapsed, nsPerOp)
+	fmt.Printf("%d orders processed in %v -> %d ns/op\n", N, elapsed, int64(nsPerOp))
 }
