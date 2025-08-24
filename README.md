@@ -4,7 +4,7 @@ Prototype HFT exchange: Multi-symbol limit order book in Go. >5M orders/second
 ## Features:
 - Multi-symbol, price-time priority, limit order book matching engine
 - High performance, in-memory approach using input and output ring buffers
-- Low latency, ~100ns per order
+- Low latency, ~70ns per order (Apple M1). ~400 SLOC
 
 ## Usage:
 `go run .`
