@@ -303,7 +303,7 @@ func (e *Engine) InputDistributor() {
 	for {
 		n := e.inputRing.Read(buf)
 		for i := 0; uint32(i) < n; i++ {
-			ev := buf[i]
+			ev := &buf[i]
 			switch ev.Type {
 			case ORDER_EVENT:
 				e.Limit(ev.Symbol, ev.Side, ev.Price, ev.Size, ev.Trader)
