@@ -107,7 +107,6 @@ func (e *Engine) Limit(symbol Symbol, side Side, price Price, size Size, trader 
 	// Add unfilled portion to book
 	if remaining > 0 {
 		order.Size = remaining
-		e.orders[newOrderID] = order
 		e.addToBook(book, &order, side, price, newOrderID)
 	}
 }
