@@ -1,9 +1,5 @@
 package main
 
-import (
-	"sync/atomic"
-)
-
 const (
 	RING_SIZE = 1 << 16 // 65,536 elements - power of 2 for fast masking
 	RING_MASK = RING_SIZE - 1
@@ -24,17 +20,13 @@ func NewRingBuffer[T any](size int) *RingBuffer[T] {
 
 // Push adds element to buffer (overwrites if full)
 func (r *RingBuffer[T]) Push(v T) {
-	pos := atomic.LoadUint64(&r.writePos)
-	r.buffer[pos&RING_MASK] = v // Wrap using bit mask
-	atomic.StoreUint64(&r.writePos, pos+1)
+	r.buffer[r.writePos&RING_MASK] = v // Wrap using bit mask
+	r.writePos++
 }
 
 // Read extracts up to len(out) elements, returns actual count read
 func (r *RingBuffer[T]) Read(out []T) uint32 {
-	readPos := atomic.LoadUint64(&r.readPos)
-	writePos := atomic.LoadUint64(&r.writePos)
-
-	available := writePos - readPos
+	available := r.writePos - r.readPos
 	if available == 0 {
 		return 0 // Buffer empty
 	}
@@ -43,10 +35,10 @@ func (r *RingBuffer[T]) Read(out []T) uint32 {
 
 	// Copy elements with wraparound handling
 	for i := uint64(0); i < count; i++ {
-		out[i] = r.buffer[(readPos+i)&RING_MASK]
+		out[i] = r.buffer[(r.readPos+i)&RING_MASK]
 	}
 
-	atomic.StoreUint64(&r.readPos, readPos+count)
+	r.readPos += count
 	return uint32(count)
 }
 
