@@ -21,11 +21,16 @@ func fastRand() uint32 {
 func main() {
 	engine := NewEngine()
 
+	// server := NewServer(engine) // Setup TCP server
+
 	// Start input / output distributors
 	go engine.InputDistributor()
 	go engine.OutputDistributor(func(ev OutputEvent) {
 		atomic.AddUint64(&totalOutputs, 1) // Increment to demonstrate messages received back
+		// server.serverDistributionCallback(ev) // Report events to connected server clients
 	})
+
+	// server.Start() // Start TCP server
 
 	const N = 30_000_000
 	start := time.Now()
