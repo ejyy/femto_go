@@ -30,7 +30,7 @@ func main() {
 		// server.serverDistributionCallback(ev) // Report events to connected server clients
 	})
 
-	// server.Start() // Start TCP server
+	// go server.Start() // Start TCP server
 
 	const N = 30_000_000
 	start := time.Now()
