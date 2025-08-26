@@ -1,15 +1,21 @@
 package main
 
 const (
-	RING_SIZE = 1 << 16 // 65,536 elements - power of 2 for fast masking
-	RING_MASK = RING_SIZE - 1
+	RING_SIZE       = 1 << 16 // 65,536 elements - power of 2 for fast masking
+	RING_MASK       = RING_SIZE - 1
+	CACHE_LINE_SIZE = 64
 )
 
 // Lock-free ring buffer supporting concurrent single producer/consumer
 type RingBuffer[T any] struct {
-	buffer   []T    // Fixed-size circular buffer
-	writePos uint64 // Atomically updated write position
-	readPos  uint64 // Atomically updated read position
+	buffer []T // Fixed-size circular buffer
+
+	// Separate cache lines to avoid false sharing between producer/consumer
+	_pad1    [CACHE_LINE_SIZE - 8]byte
+	writePos uint64 // Write position
+	_pad2    [CACHE_LINE_SIZE - 8]byte
+	readPos  uint64 // Read position
+	_pad3    [CACHE_LINE_SIZE - 8]byte
 }
 
 func NewRingBuffer[T any](size int) *RingBuffer[T] {
