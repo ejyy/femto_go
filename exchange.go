@@ -1,10 +1,11 @@
 package main
 
 const (
-	MAX_SYMBOLS        = 1 << 8  // 256 trading symbols
-	MAX_PRICE_LEVELS   = 1 << 14 // 16,384 price ticks
-	MAX_ORDERS         = 1 << 25 // 33M total orders
-	DISTRIBUTOR_BUFFER = 1 << 10 // 1024 event size
+	MAX_SYMBOLS        = 1 << 8                 // 256 trading symbols
+	MAX_PRICE_LEVELS   = 1 << 14                // 16,384 price ticks
+	MAX_ORDERS         = 1 << 26                // 67M total orders
+	DISTRIBUTOR_BUFFER = 1 << 10                // 1024 event size
+	FREE_MASK          = DISTRIBUTOR_BUFFER - 1 // 1023 free slot mask
 )
 
 type OrderID uint32
@@ -21,9 +22,16 @@ const (
 
 // Exchange engine with pre-allocated arrays
 type Engine struct {
-	books   [MAX_SYMBOLS]OrderBook // Order books per symbol
-	orders  [MAX_ORDERS]Order      // Pre-allocated order pool
-	orderID OrderID                // Monotonic order ID generator
+	books [MAX_SYMBOLS]OrderBook // Order books per symbol
+
+	orders     [MAX_ORDERS]Order  // Pre-allocated order pool
+	orderIndex [MAX_ORDERS]uint32 // Map of external OrderID -> internal slot index
+
+	orderID OrderID // Monotonic order ID generator
+
+	freeSlots [DISTRIBUTOR_BUFFER]uint32 // 'Recycled' Order slots
+	freeHead  uint32                     // First free slot
+	freeTail  uint32                     // Next empty slot
 
 	inputRing  *RingBuffer[InputCommand] // Incoming commands
 	outputRing *RingBuffer[OutputEvent]  // Outgoing events
@@ -77,17 +85,24 @@ func (e *Engine) Limit(symbol Symbol, side Side, price Price, size Size, trader 
 		return
 	}
 
-	// Generate unique order ID
 	e.orderID++
 	newOrderID := e.orderID
+
+	// Pick internal slot (recycled or new)
+	var slot uint32
+	if e.freeHead != e.freeTail {
+		slot = e.freeSlots[e.freeHead&FREE_MASK]
+		e.freeHead++
+	} else {
+		slot = uint32(newOrderID)
+	}
+
+	e.orderIndex[newOrderID] = slot
 
 	// Build Order object based on function parameters
 	order := Order{
 		Size: size,
 	}
-
-	// TODO: Consider pooling / reuse of Order array when cancelled
-	// May require a map from external ID to internal ID
 
 	// Report order receipt
 	e.outputRing.Push(OutputEvent{
@@ -114,9 +129,6 @@ func (e *Engine) Limit(symbol Symbol, side Side, price Price, size Size, trader 
 // Match incoming order against opposite side of book
 func (e *Engine) match(book *OrderBook, order *Order, oSymbol Symbol, oSide Side, oPrice Price, oTrader TraderID, oID OrderID) Size {
 	remaining := order.Size
-
-	// TODO: Only update best when price level exhausted, else wasteful
-	// Bitmap to represent Pricelevels when density low better than 'walking'
 
 	if oSide == Bid {
 		// Buy order matches against asks at or below bid price
@@ -164,7 +176,8 @@ func (book *OrderBook) updateBestAsk() {
 // Execute trades against orders at specific price level (FIFO)
 func (e *Engine) matchLevel(level *PriceLevel, remaining Size, price Price, oSymbol Symbol, oTrader TraderID, oID OrderID) Size {
 	for currentID := level.head; currentID != 0 && remaining > 0; {
-		counterOrder := &e.orders[currentID]
+		slot := e.orderIndex[currentID]
+		counterOrder := &e.orders[slot]
 		nextID := counterOrder.Next // Save before potential unlink
 
 		fillSize := min(remaining, counterOrder.Size)
@@ -219,25 +232,28 @@ func (e *Engine) addToBook(book *OrderBook, order *Order, oSide Side, oPrice Pri
 		level.head = oID
 		level.tail = oID
 	} else {
-		tail := &e.orders[level.tail]
+		tailSlot := e.orderIndex[level.tail]
+		tail := &e.orders[tailSlot]
 		tail.Next = oID
 		order.Prev = level.tail
 		level.tail = oID
 	}
 
-	e.orders[oID] = *order
+	slot := e.orderIndex[oID]
+	e.orders[slot] = *order
 	level.size++
 }
 
 // Cancel order by removing from price level queue
 func (e *Engine) Cancel(orderID OrderID) {
 	// Validate order ID
-	if orderID == 0 || orderID > OrderID(e.orderID) {
+	if orderID == 0 || orderID > e.orderID {
 		e.outputRing.Push(OutputEvent{Type: REJECT_EVENT})
 		return
 	}
 
-	order := &e.orders[orderID]
+	slot := e.orderIndex[orderID]
+	order := &e.orders[slot]
 
 	// Already filled or cancelled
 	if order.Size == 0 {
@@ -248,6 +264,13 @@ func (e *Engine) Cancel(orderID OrderID) {
 	e.unlink(order.Level, orderID)
 	order.Size = 0 // Mark as cancelled
 
+	// Push into freeSlots array if there is room
+	nextTail := (e.freeTail + 1) & FREE_MASK
+	if nextTail != (e.freeHead & FREE_MASK) {
+		e.freeSlots[e.freeTail&FREE_MASK] = slot
+		e.freeTail++
+	}
+
 	// Report order cancellation
 	e.outputRing.Push(OutputEvent{
 		Type:    CANCEL_EVENT,
@@ -257,18 +280,21 @@ func (e *Engine) Cancel(orderID OrderID) {
 
 // Remove order from doubly-linked list maintaining FIFO integrity
 func (e *Engine) unlink(level *PriceLevel, orderID OrderID) {
-	order := &e.orders[orderID]
+	slot := e.orderIndex[orderID]
+	order := &e.orders[slot]
 
 	// Update previous order's next OrderID
 	if order.Prev != 0 {
-		e.orders[order.Prev].Next = order.Next
+		prevSlot := e.orderIndex[order.Prev]
+		e.orders[prevSlot].Next = order.Next
 	} else {
 		level.head = order.Next // This was the head
 	}
 
 	// Update next order's previous OrderID
 	if order.Next != 0 {
-		e.orders[order.Next].Prev = order.Prev
+		nextSlot := e.orderIndex[order.Next]
+		e.orders[nextSlot].Prev = order.Prev
 	} else {
 		level.tail = order.Prev // This was the tail
 	}

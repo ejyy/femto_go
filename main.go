@@ -6,9 +6,7 @@ import (
 	"time"
 )
 
-var totalInputs uint64
-var totalOutputs uint64
-var rng uint64 = uint64(1755956219406641000) // Fixed seed for reproducibility
+var rng uint64 = 1755956219406641000 // Fixed seed for reproducibility
 
 // Fast xorshift PRNG - much faster than crypto/rand for benchmarking
 func fastRand() uint32 {
@@ -21,6 +19,14 @@ func fastRand() uint32 {
 func main() {
 	engine := NewEngine()
 
+	// Track total inputs / outputs to ensure they broadly match
+	var totalInputs uint64
+	var totalOutputs uint64
+
+	// Track the recent OrderIDs for generating valid CANCELs
+	var recentIDs [DISTRIBUTOR_BUFFER]OrderID
+	var recentCount int
+
 	// server := NewServer(engine) // Setup TCP server
 
 	// Start input / output distributors
@@ -28,38 +34,51 @@ func main() {
 	go engine.OutputDistributor(func(ev OutputEvent) {
 		atomic.AddUint64(&totalOutputs, 1) // Increment to demonstrate messages received back
 		// server.serverDistributionCallback(ev) // Report events to connected server clients
+
+		// Keep recent OrderIDs updated on order events
+		if ev.Type == ORDER_EVENT {
+			recentIDs[recentCount%DISTRIBUTOR_BUFFER] = ev.OrderID
+			recentCount++
+		}
 	})
 
 	// go server.Start() // Start TCP server
 
-	const N = 30_000_000
+	const N = 70_000_000
 	start := time.Now()
 
 	for i := 0; i < N; i++ {
-		if fastRand()%10 == 0 && engine.orderID > 0 {
-			engine.inputRing.Push(InputCommand{
+		var cmd InputCommand
+
+		// 10% probability of cancel, only if we have recent orders
+		if fastRand()%10 == 0 && recentCount > 0 {
+			idx := fastRand() % uint32(min(recentCount, DISTRIBUTOR_BUFFER))
+			cmd = InputCommand{
 				Type:    CANCEL_EVENT,
-				OrderID: OrderID(fastRand()%uint32(engine.orderID) + 1),
-			})
+				OrderID: recentIDs[idx],
+			}
 		} else {
-			engine.inputRing.Push(InputCommand{
+			cmd = InputCommand{
 				Type:   ORDER_EVENT,
 				Symbol: Symbol(fastRand() % MAX_SYMBOLS),
 				Trader: TraderID(fastRand()%1000 + 1),
 				Price:  Price(100 + fastRand()%200),
 				Side:   Side(fastRand() % 2),
 				Size:   Size(fastRand()%1000 + 1),
-			})
+			}
 		}
+
+		engine.inputRing.Push(cmd)
 		atomic.AddUint64(&totalInputs, 1)
 	}
 
 	// Wait until all outputs drained
 	for atomic.LoadUint64(&totalOutputs) < totalInputs {
-		time.Sleep(1 * time.Nanosecond)
+		time.Sleep(10 * time.Microsecond)
 	}
 
 	elapsed := time.Since(start)
 	nsPerOp := float64(elapsed.Nanoseconds()) / float64(N)
 	fmt.Printf("%d orders processed in %v -> %d ns/op\n", N, elapsed, int64(nsPerOp))
+	fmt.Printf("%d inputs and %d outputs\n", totalInputs, totalOutputs)
 }
