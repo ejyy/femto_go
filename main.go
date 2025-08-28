@@ -27,13 +27,10 @@ func main() {
 	var recentIDs [DISTRIBUTOR_BUFFER]OrderID
 	var recentCount int
 
-	// server := NewServer(engine) // Setup TCP server
-
 	// Start input / output distributors
 	go engine.InputDistributor()
 	go engine.OutputDistributor(func(ev OutputEvent) {
 		atomic.AddUint64(&totalOutputs, 1) // Increment to demonstrate messages received back
-		// server.serverDistributionCallback(ev) // Report events to connected server clients
 
 		// Keep recent OrderIDs updated on order events
 		if ev.Type == ORDER_EVENT {
@@ -41,8 +38,6 @@ func main() {
 			recentCount++
 		}
 	})
-
-	// go server.Start() // Start TCP server
 
 	const N = 70_000_000
 	start := time.Now()
