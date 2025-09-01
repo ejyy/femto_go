@@ -98,7 +98,7 @@ func (e *Engine) match(book *OrderBook, order *Order, oSymbol Symbol, oSide Side
 		// Buy order matches against asks at or below bid price
 		for remaining > 0 && book.askMin < MAX_PRICE_LEVELS && book.askMin <= oPrice {
 			remaining = e.matchLevel(&book.askLevels[book.askMin], remaining, book.askMin, oSymbol, oTrader, oID)
-			if remaining > 0 {
+			if remaining > 0 && book.askLevels[book.askMin].head == 0 { // Only checks if PriceLevel exhausted
 				book.updateBestAsk() // Find next best ask
 			}
 		}
@@ -106,7 +106,7 @@ func (e *Engine) match(book *OrderBook, order *Order, oSymbol Symbol, oSide Side
 		// Sell order matches against bids at or above ask price
 		for remaining > 0 && book.bidMax > 0 && book.bidMax >= oPrice {
 			remaining = e.matchLevel(&book.bidLevels[book.bidMax], remaining, book.bidMax, oSymbol, oTrader, oID)
-			if remaining > 0 {
+			if remaining > 0 && book.bidLevels[book.bidMax].head == 0 { // Only checks if PriceLevel exhausted
 				book.updateBestBid() // Find next best bid
 			}
 		}
