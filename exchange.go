@@ -248,7 +248,7 @@ func (e *Engine) unlink(level *PriceLevel, orderID OrderID) {
 }
 
 // Distributes commands to engine
-func (e *Engine) InputDistributor() {
+func (e *Engine) StartInputDistributor() {
 	buf := make([]InputCommand, DISTRIBUTOR_BUFFER)
 	for {
 		n := e.inputRing.Read(buf)
@@ -265,7 +265,7 @@ func (e *Engine) InputDistributor() {
 }
 
 // Distributes commands from engine
-func (e *Engine) OutputDistributor(callbackFunc func(OutputEvent)) {
+func (e *Engine) StartOutputDistributor(callbackFunc func(OutputEvent)) {
 	buf := make([]OutputEvent, DISTRIBUTOR_BUFFER)
 	for {
 		n := e.outputRing.Read(buf)

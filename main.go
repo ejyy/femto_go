@@ -28,8 +28,8 @@ func main() {
 	var recentCount int
 
 	// Start input / output distributors
-	go engine.InputDistributor()
-	go engine.OutputDistributor(func(ev OutputEvent) {
+	go engine.StartInputDistributor()
+	go engine.StartOutputDistributor(func(ev OutputEvent) {
 		atomic.AddUint64(&totalOutputs, 1) // Increment to demonstrate messages received back
 
 		// Keep recent OrderIDs updated on order events
