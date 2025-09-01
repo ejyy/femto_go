@@ -206,13 +206,6 @@ func (e *Engine) Cancel(orderID OrderID) {
 	e.unlink(order.Level, orderID)
 	order.Size = 0 // Mark as cancelled
 
-	// Push into freeSlots array if there is room
-	nextTail := (e.freeTail + 1) & FREE_MASK
-	if nextTail != (e.freeHead & FREE_MASK) {
-		e.freeSlots[e.freeTail&FREE_MASK] = slot
-		e.freeTail++
-	}
-
 	// Report order cancellation
 	e.outputRing.Push(OutputEvent{
 		Type:    CANCEL_EVENT,
@@ -239,6 +232,13 @@ func (e *Engine) unlink(level *PriceLevel, orderID OrderID) {
 		e.orders[nextSlot].Prev = order.Prev
 	} else {
 		level.tail = order.Prev // This was the tail
+	}
+
+	// Push into freeSlots array if there is room
+	nextTail := (e.freeTail + 1) & FREE_MASK
+	if nextTail != (e.freeHead & FREE_MASK) {
+		e.freeSlots[e.freeTail&FREE_MASK] = slot
+		e.freeTail++
 	}
 
 	// Clear references and decrement size
