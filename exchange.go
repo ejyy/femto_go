@@ -91,8 +91,8 @@ func (e *Engine) Limit(symbol Symbol, side Side, price Price, size Size, trader 
 }
 
 // Match incoming order against opposite side of book
-func (e *Engine) match(book *OrderBook, order *Order, oSymbol Symbol, oSide Side, oPrice Price, oTrader TraderID, oID OrderID) Size {
-	remaining := order.Size
+func (e *Engine) match(book *OrderBook, order *Order, oSymbol Symbol, oSide Side, oPrice Price, oTrader TraderID, oID OrderID) (remaining Size) {
+	remaining = order.Size
 
 	if oSide == Bid {
 		// Buy order matches against asks at or below bid price
