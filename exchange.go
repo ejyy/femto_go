@@ -91,6 +91,8 @@ func (e *Engine) Limit(symbol Symbol, side Side, price Price, size Size, trader 
 }
 
 // Match incoming order against opposite side of book
+//
+//go:inline
 func (e *Engine) match(book *OrderBook, order *Order, oSymbol Symbol, oSide Side, oPrice Price, oTrader TraderID, oID OrderID) (remaining Size) {
 	remaining = order.Size
 
@@ -116,6 +118,8 @@ func (e *Engine) match(book *OrderBook, order *Order, oSymbol Symbol, oSide Side
 }
 
 // Execute trades against orders at specific price level (FIFO)
+//
+//go:inline
 func (e *Engine) matchLevel(level *PriceLevel, remaining Size, price Price, oSymbol Symbol, oTrader TraderID, oID OrderID) Size {
 	for currentID := level.head; currentID != 0 && remaining > 0; {
 		slot := e.orderIndex[currentID]
@@ -150,6 +154,8 @@ func (e *Engine) matchLevel(level *PriceLevel, remaining Size, price Price, oSym
 }
 
 // Insert order into appropriate price level queue (FIFO)
+//
+//go:inline
 func (e *Engine) addToBook(book *OrderBook, order *Order, oSide Side, oPrice Price, oID OrderID) {
 	var level *PriceLevel
 
@@ -214,6 +220,8 @@ func (e *Engine) Cancel(orderID OrderID) {
 }
 
 // Remove order from doubly-linked list maintaining FIFO integrity
+//
+//go:inline
 func (e *Engine) unlink(level *PriceLevel, orderID OrderID) {
 	slot := e.orderIndex[orderID]
 	order := &e.orders[slot]
