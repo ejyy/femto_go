@@ -197,8 +197,8 @@ func (e *Engine) Cancel(orderID OrderID) {
 	slot := e.orderIndex[orderID]
 	order := &e.orders[slot]
 
-	// Already filled or cancelled
-	if order.Size == 0 {
+	// Already filled, cancelled or recycled
+	if order.Size == 0 || slot == 0 {
 		e.outputRing.Push(OutputEvent{Type: REJECT_EVENT})
 		return
 	}
