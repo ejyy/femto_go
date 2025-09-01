@@ -245,6 +245,7 @@ func (e *Engine) unlink(level *PriceLevel, orderID OrderID) {
 	order.Next = 0
 	order.Prev = 0
 	level.size--
+	e.orderIndex[orderID] = 0
 }
 
 // Distributes commands to engine
