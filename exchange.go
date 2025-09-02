@@ -35,6 +35,7 @@ func NewEngine() *Engine {
 	for i := range e.books {
 		e.books[i] = OrderBook{
 			askMin: MAX_PRICE_LEVELS,
+			bidMax: 0,
 		}
 	}
 
