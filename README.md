@@ -1,10 +1,10 @@
 # femto_go
-Prototype HFT exchange: Multi-symbol limit order book in Go. ~20M orders/second
+Prototype HFT exchange: Multi-symbol limit order book in Go. ~5M orders/second
 
 ## Features:
 - Multi-symbol, price-time priority, limit order book matching engine
 - High performance, in-memory approach using input and output ring buffers
-- Low latency, ~50ns per order (Apple M1)
+- Low latency, ~120ns per order (Apple M1)
 - ~400 SLOC. Zero dependencies
 
 ## Usage:
