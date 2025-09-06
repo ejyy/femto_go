@@ -9,7 +9,7 @@ const (
 )
 
 // Exchange engine with pre-allocated arrays
-type Engine struct {
+type MatchingEngine struct {
 	books [MAX_SYMBOLS]OrderBook // Order books per symbol
 
 	orders     [MAX_ORDERS]Order  // Pre-allocated order pool
@@ -25,8 +25,8 @@ type Engine struct {
 	outputRing *RingBuffer[OutputEvent]  // Outgoing events
 }
 
-func NewEngine() *Engine {
-	e := &Engine{
+func NewMatchingEngine() *MatchingEngine {
+	e := &MatchingEngine{
 		inputRing:  NewRingBuffer[InputCommand](RING_SIZE),
 		outputRing: NewRingBuffer[OutputEvent](RING_SIZE),
 	}
@@ -43,7 +43,7 @@ func NewEngine() *Engine {
 }
 
 // Process limit order with matching and book insertion
-func (e *Engine) Limit(symbol Symbol, side Side, price Price, size Size, trader TraderID) {
+func (e *MatchingEngine) Limit(symbol Symbol, side Side, price Price, size Size, trader TraderID) {
 	// Validate order parameters
 	if price == 0 || size == 0 || price >= MAX_PRICE_LEVELS {
 		e.outputRing.Push(OutputEvent{Type: REJECT_EVENT})
@@ -94,7 +94,7 @@ func (e *Engine) Limit(symbol Symbol, side Side, price Price, size Size, trader 
 // Match incoming order against opposite side of book
 //
 //go:inline
-func (e *Engine) match(book *OrderBook, order *Order, oSymbol Symbol, oSide Side, oPrice Price, oTrader TraderID, oID OrderID) (remaining Size) {
+func (e *MatchingEngine) match(book *OrderBook, order *Order, oSymbol Symbol, oSide Side, oPrice Price, oTrader TraderID, oID OrderID) (remaining Size) {
 	remaining = order.Size
 
 	if oSide == Bid {
@@ -121,7 +121,7 @@ func (e *Engine) match(book *OrderBook, order *Order, oSymbol Symbol, oSide Side
 // Execute trades against orders at specific price level (FIFO)
 //
 //go:inline
-func (e *Engine) matchLevel(level *PriceLevel, remaining Size, price Price, oSymbol Symbol, oTrader TraderID, oID OrderID) Size {
+func (e *MatchingEngine) matchLevel(level *PriceLevel, remaining Size, price Price, oSymbol Symbol, oTrader TraderID, oID OrderID) Size {
 	for counterID := level.head; counterID != 0 && remaining > 0; {
 		counterSlot := e.orderIndex[counterID]
 		counterOrder := &e.orders[counterSlot]
@@ -157,7 +157,7 @@ func (e *Engine) matchLevel(level *PriceLevel, remaining Size, price Price, oSym
 // Insert order into appropriate price level queue (FIFO)
 //
 //go:inline
-func (e *Engine) addToBook(book *OrderBook, order *Order, oSide Side, oPrice Price, oID OrderID, slot uint32) {
+func (e *MatchingEngine) addToBook(book *OrderBook, order *Order, oSide Side, oPrice Price, oID OrderID, slot uint32) {
 	var level *PriceLevel
 
 	if oSide == Bid {
@@ -193,7 +193,7 @@ func (e *Engine) addToBook(book *OrderBook, order *Order, oSide Side, oPrice Pri
 }
 
 // Cancel order by removing from price level queue
-func (e *Engine) Cancel(cancelOrderID OrderID) {
+func (e *MatchingEngine) Cancel(cancelOrderID OrderID) {
 	// Validate order ID
 	if cancelOrderID == 0 || cancelOrderID > e.orderID {
 		e.outputRing.Push(OutputEvent{Type: REJECT_EVENT})
@@ -222,7 +222,7 @@ func (e *Engine) Cancel(cancelOrderID OrderID) {
 // Remove order from doubly-linked list maintaining FIFO integrity
 //
 //go:inline
-func (e *Engine) unlink(level *PriceLevel, unlinkOrderID OrderID, unlinkSlot uint32) {
+func (e *MatchingEngine) unlink(level *PriceLevel, unlinkOrderID OrderID, unlinkSlot uint32) {
 	unlinkOrder := &e.orders[unlinkSlot]
 
 	// Update previous order's next OrderID

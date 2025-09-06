@@ -17,7 +17,7 @@ func fastRand() uint32 {
 }
 
 func main() {
-	engine := NewEngine()
+	engine := NewMatchingEngine()
 
 	// Track total inputs / outputs to ensure they broadly match
 	var totalInputs uint64

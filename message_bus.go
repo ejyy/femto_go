@@ -39,7 +39,7 @@ type InputCommand struct {
 }
 
 // Distributes commands to engine
-func (e *Engine) StartInputDistributor() {
+func (e *MatchingEngine) StartInputDistributor() {
 	buf := make([]InputCommand, DISTRIBUTOR_BUFFER)
 	for {
 		n := e.inputRing.Read(buf)
@@ -56,7 +56,7 @@ func (e *Engine) StartInputDistributor() {
 }
 
 // Distributes commands from engine
-func (e *Engine) StartOutputDistributor(callbackFunc func(OutputEvent)) {
+func (e *MatchingEngine) StartOutputDistributor(callbackFunc func(OutputEvent)) {
 	buf := make([]OutputEvent, DISTRIBUTOR_BUFFER)
 	for {
 		n := e.outputRing.Read(buf)
