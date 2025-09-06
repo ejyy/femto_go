@@ -1,11 +1,12 @@
 package main
 
 const (
-	MAX_SYMBOLS        = 1 << 8                 // 256 trading symbols
-	MAX_PRICE_LEVELS   = 1 << 14                // 16,384 price ticks
-	MAX_ORDERS         = 1 << 26                // 67M total orders
-	DISTRIBUTOR_BUFFER = 1 << 10                // 1024 event size
-	FREE_MASK          = DISTRIBUTOR_BUFFER - 1 // 1023 free slot mask
+	MAX_SYMBOLS        = 1 << 8         // 256 trading symbols
+	MAX_PRICE_LEVELS   = 1 << 14        // 16,384 price ticks
+	MAX_ORDERS         = 1 << 26        // 67M total orders
+	DISTRIBUTOR_BUFFER = 1 << 10        // 1024 event size
+	FREE_SLOTS         = 1 << 10        // 1024 free order slots
+	FREE_MASK          = FREE_SLOTS - 1 // Free slot mask
 )
 
 // Exchange engine with pre-allocated arrays
@@ -13,13 +14,13 @@ type Engine struct {
 	books [MAX_SYMBOLS]OrderBook // Order books per symbol
 
 	orders     [MAX_ORDERS]Order  // Pre-allocated order pool
-	orderIndex [MAX_ORDERS]uint32 // Map of external OrderID -> internal slot index
+	orderIndex [MAX_ORDERS]uint32 // External OrderID -> internal slot index
 
 	orderID OrderID // Monotonic order ID generator
 
-	freeSlots [DISTRIBUTOR_BUFFER]uint32 // 'Recycled' Order slots
-	freeHead  uint32                     // First free slot
-	freeTail  uint32                     // Next empty slot
+	freeSlots [FREE_SLOTS]uint32 // 'Recycled' Order slots
+	freeHead  uint32             // First free slot
+	freeTail  uint32             // Next empty slot
 
 	inputRing  *RingBuffer[InputCommand] // Incoming commands
 	outputRing *RingBuffer[OutputEvent]  // Outgoing events
