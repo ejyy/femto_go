@@ -87,7 +87,7 @@ func (e *Engine) Limit(symbol Symbol, side Side, price Price, size Size, trader 
 	// Add unfilled portion to book
 	if remaining > 0 {
 		order.Size = remaining
-		e.addToBook(book, &order, side, price, newOrderID)
+		e.addToBook(book, &order, side, price, newOrderID, slot)
 	}
 }
 
@@ -122,10 +122,10 @@ func (e *Engine) match(book *OrderBook, order *Order, oSymbol Symbol, oSide Side
 //
 //go:inline
 func (e *Engine) matchLevel(level *PriceLevel, remaining Size, price Price, oSymbol Symbol, oTrader TraderID, oID OrderID) Size {
-	for currentID := level.head; currentID != 0 && remaining > 0; {
-		slot := e.orderIndex[currentID]
-		counterOrder := &e.orders[slot]
-		nextID := counterOrder.Next // Save before potential unlink
+	for counterID := level.head; counterID != 0 && remaining > 0; {
+		counterSlot := e.orderIndex[counterID]
+		counterOrder := &e.orders[counterSlot]
+		nextCounterID := counterOrder.Next // Save before potential unlink
 
 		fillSize := min(remaining, counterOrder.Size)
 
@@ -137,7 +137,7 @@ func (e *Engine) matchLevel(level *PriceLevel, remaining Size, price Price, oSym
 			Size:           fillSize,
 			Trader:         oTrader,
 			Symbol:         oSymbol,
-			CounterOrderID: currentID,
+			CounterOrderID: counterID,
 		})
 
 		remaining -= fillSize
@@ -145,10 +145,10 @@ func (e *Engine) matchLevel(level *PriceLevel, remaining Size, price Price, oSym
 
 		// Remove fully filled orders
 		if counterOrder.Size == 0 {
-			e.unlink(level, currentID)
+			e.unlink(level, counterID, counterSlot)
 		}
 
-		currentID = nextID
+		counterID = nextCounterID
 	}
 
 	return remaining
@@ -157,7 +157,7 @@ func (e *Engine) matchLevel(level *PriceLevel, remaining Size, price Price, oSym
 // Insert order into appropriate price level queue (FIFO)
 //
 //go:inline
-func (e *Engine) addToBook(book *OrderBook, order *Order, oSide Side, oPrice Price, oID OrderID) {
+func (e *Engine) addToBook(book *OrderBook, order *Order, oSide Side, oPrice Price, oID OrderID, slot uint32) {
 	var level *PriceLevel
 
 	if oSide == Bid {
@@ -188,73 +188,71 @@ func (e *Engine) addToBook(book *OrderBook, order *Order, oSide Side, oPrice Pri
 		level.tail = oID
 	}
 
-	slot := e.orderIndex[oID]
 	e.orders[slot] = *order
 	level.size++
 }
 
 // Cancel order by removing from price level queue
-func (e *Engine) Cancel(orderID OrderID) {
+func (e *Engine) Cancel(cancelOrderID OrderID) {
 	// Validate order ID
-	if orderID == 0 || orderID > e.orderID {
+	if cancelOrderID == 0 || cancelOrderID > e.orderID {
 		e.outputRing.Push(OutputEvent{Type: REJECT_EVENT})
 		return
 	}
 
-	slot := e.orderIndex[orderID]
-	order := &e.orders[slot]
+	cancelSlot := e.orderIndex[cancelOrderID]
+	cancelOrder := &e.orders[cancelSlot]
 
 	// Already filled, cancelled or recycled
-	if order.Size == 0 || slot == 0 {
+	if cancelOrder.Size == 0 || cancelSlot == 0 {
 		e.outputRing.Push(OutputEvent{Type: REJECT_EVENT})
 		return
 	}
 
-	e.unlink(order.Level, orderID)
-	order.Size = 0 // Mark as cancelled
+	e.unlink(cancelOrder.Level, cancelOrderID, cancelSlot)
+	cancelOrder.Size = 0 // Mark as cancelled
 
 	// Report order cancellation
 	e.outputRing.Push(OutputEvent{
 		Type:    CANCEL_EVENT,
-		OrderID: orderID,
+		OrderID: cancelOrderID,
 	})
 }
 
 // Remove order from doubly-linked list maintaining FIFO integrity
 //
 //go:inline
-func (e *Engine) unlink(level *PriceLevel, orderID OrderID) {
-	slot := e.orderIndex[orderID]
-	order := &e.orders[slot]
+func (e *Engine) unlink(level *PriceLevel, unlinkOrderID OrderID, unlinkSlot uint32) {
+	unlinkOrder := &e.orders[unlinkSlot]
 
 	// Update previous order's next OrderID
-	if order.Prev != 0 {
-		prevSlot := e.orderIndex[order.Prev]
-		e.orders[prevSlot].Next = order.Next
+	if unlinkOrder.Prev != 0 {
+		prevSlot := e.orderIndex[unlinkOrder.Prev]
+		e.orders[prevSlot].Next = unlinkOrder.Next
 	} else {
-		level.head = order.Next // This was the head
+		level.head = unlinkOrder.Next // This was the head
 	}
 
 	// Update next order's previous OrderID
-	if order.Next != 0 {
-		nextSlot := e.orderIndex[order.Next]
-		e.orders[nextSlot].Prev = order.Prev
+	if unlinkOrder.Next != 0 {
+		nextSlot := e.orderIndex[unlinkOrder.Next]
+		e.orders[nextSlot].Prev = unlinkOrder.Prev
 	} else {
-		level.tail = order.Prev // This was the tail
+		level.tail = unlinkOrder.Prev // This was the tail
 	}
 
 	// Push into freeSlots array if there is room
 	nextTail := (e.freeTail + 1) & FREE_MASK
 	if nextTail != (e.freeHead & FREE_MASK) {
-		e.freeSlots[e.freeTail&FREE_MASK] = slot
+		e.freeSlots[e.freeTail&FREE_MASK] = unlinkSlot
 		e.freeTail++
 	}
 
 	// Clear references and decrement size
-	order.Next = 0
-	order.Prev = 0
+	unlinkOrder.Next = 0
+	unlinkOrder.Prev = 0
 	level.size--
-	e.orderIndex[orderID] = 0
+	e.orderIndex[unlinkOrderID] = 0
 }
 
 // Distributes commands to engine
