@@ -1,12 +1,11 @@
 package main
 
 const (
-	MAX_SYMBOLS        = 1 << 8         // 256 trading symbols
-	MAX_PRICE_LEVELS   = 1 << 14        // 16,384 price ticks
-	MAX_ORDERS         = 1 << 26        // 67M total orders
-	DISTRIBUTOR_BUFFER = 1 << 10        // 1024 event size
-	FREE_SLOTS         = 1 << 10        // 1024 free order slots
-	FREE_MASK          = FREE_SLOTS - 1 // Free slot mask
+	MAX_SYMBOLS      = 1 << 8         // 256 trading symbols
+	MAX_PRICE_LEVELS = 1 << 14        // 16,384 price ticks
+	MAX_ORDERS       = 1 << 26        // 67M total orders
+	FREE_SLOTS       = 1 << 10        // 1024 free order slots
+	FREE_MASK        = FREE_SLOTS - 1 // Free slot mask
 )
 
 // Exchange engine with pre-allocated arrays
@@ -254,32 +253,4 @@ func (e *Engine) unlink(level *PriceLevel, unlinkOrderID OrderID, unlinkSlot uin
 	unlinkOrder.Prev = 0
 	level.size--
 	e.orderIndex[unlinkOrderID] = 0
-}
-
-// Distributes commands to engine
-func (e *Engine) StartInputDistributor() {
-	buf := make([]InputCommand, DISTRIBUTOR_BUFFER)
-	for {
-		n := e.inputRing.Read(buf)
-		for i := 0; uint32(i) < n; i++ {
-			ev := &buf[i]
-			switch ev.Type {
-			case ORDER_EVENT:
-				e.Limit(ev.Symbol, ev.Side, ev.Price, ev.Size, ev.Trader)
-			case CANCEL_EVENT:
-				e.Cancel(ev.OrderID)
-			}
-		}
-	}
-}
-
-// Distributes commands from engine
-func (e *Engine) StartOutputDistributor(callbackFunc func(OutputEvent)) {
-	buf := make([]OutputEvent, DISTRIBUTOR_BUFFER)
-	for {
-		n := e.outputRing.Read(buf)
-		for i := 0; uint32(i) < n; i++ {
-			callbackFunc(buf[i])
-		}
-	}
 }

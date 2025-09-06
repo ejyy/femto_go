@@ -64,36 +64,3 @@ func (r *RingBuffer[T]) Read(out []T) uint32 {
 		return uint32(count)
 	}
 }
-
-// Exchange engine event types
-type EventType uint8
-
-const (
-	ORDER_EVENT     EventType = iota // Order creation
-	CANCEL_EVENT                     // Order cancellation
-	EXECUTION_EVENT                  // Trade execution
-	REJECT_EVENT                     // Order rejection
-)
-
-// Output event sent by exchange engine
-type OutputEvent struct {
-	Type           EventType
-	OrderID        OrderID
-	Price          Price
-	Size           Size
-	Trader         TraderID
-	Symbol         Symbol
-	Side           Side
-	CounterOrderID OrderID // For executions (counterparty OrderID)
-}
-
-// Input command received by exchange engine (related to exchange Order struct)
-type InputCommand struct {
-	Type    EventType
-	Symbol  Symbol
-	Side    Side
-	Price   Price
-	Size    Size
-	Trader  TraderID
-	OrderID OrderID
-}
