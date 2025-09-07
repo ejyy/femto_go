@@ -27,8 +27,8 @@ type MatchingEngine struct {
 
 func NewMatchingEngine() *MatchingEngine {
 	e := &MatchingEngine{
-		inputRing:  NewRingBuffer[InputCommand](RING_SIZE),
-		outputRing: NewRingBuffer[OutputEvent](RING_SIZE),
+		inputRing:  NewRingBuffer[InputCommand](),
+		outputRing: NewRingBuffer[OutputEvent](),
 	}
 
 	// Set  ask minimum to initial value (no asks)

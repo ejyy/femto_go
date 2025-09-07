@@ -20,9 +20,9 @@ type RingBuffer[T any] struct {
 	_pad3    [CACHE_LINE_SIZE - 8]byte
 }
 
-func NewRingBuffer[T any](size int) *RingBuffer[T] {
+func NewRingBuffer[T any]() *RingBuffer[T] {
 	return &RingBuffer[T]{
-		buffer: make([]T, size),
+		buffer: make([]T, RING_SIZE),
 	}
 }
 
