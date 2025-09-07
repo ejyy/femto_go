@@ -7,8 +7,11 @@ import (
 	"time"
 )
 
+// TestNewRingBufferInitialization ensures that a new ring buffer is
+// properly initialised with the correct size and initial positions.
 func TestNewRingBufferInitialization(t *testing.T) {
 	rb := NewRingBuffer[int]()
+
 	if rb == nil {
 		t.Fatal("RingBuffer should not be nil after initialization")
 	}
@@ -20,11 +23,13 @@ func TestNewRingBufferInitialization(t *testing.T) {
 	}
 }
 
+// TestPushAndReadSingleElement checks that a single value can be pushed
+// and read correctly from the buffer.
 func TestPushAndReadSingleElement(t *testing.T) {
 	rb := NewRingBuffer[int]()
 
-	rb.Push(42)
-	out := make([]int, 1)
+	rb.Push(42)           // Push a single element
+	out := make([]int, 1) // Allocate slice to read into
 	n := rb.Read(out)
 
 	if n != 1 {
@@ -35,10 +40,13 @@ func TestPushAndReadSingleElement(t *testing.T) {
 	}
 }
 
+// TestPushAndReadMultipleElements ensures multiple sequential pushes
+// and reads preserve order and correctness.
 func TestPushAndReadMultipleElements(t *testing.T) {
 	rb := NewRingBuffer[int]()
 	values := []int{1, 2, 3, 4, 5}
 
+	// Push multiple elements
 	for _, v := range values {
 		rb.Push(v)
 	}
@@ -50,6 +58,7 @@ func TestPushAndReadMultipleElements(t *testing.T) {
 		t.Fatalf("Expected to read %d elements, got %d", len(values), n)
 	}
 
+	// Verify order is preserved
 	for i, v := range values {
 		if out[i] != v {
 			t.Errorf("Expected %d at index %d, got %d", v, i, out[i])
@@ -57,6 +66,8 @@ func TestPushAndReadMultipleElements(t *testing.T) {
 	}
 }
 
+// TestRingBufferWrapAround tests proper handling of the circular buffer
+// when indices wrap past the end of the internal array.
 func TestRingBufferWrapAround(t *testing.T) {
 	rb := NewRingBuffer[int]() // Fixed-size buffer
 
@@ -72,48 +83,46 @@ func TestRingBufferWrapAround(t *testing.T) {
 		t.Fatalf("Expected to read %d items, got %d", RING_SIZE/2, n)
 	}
 
-	// Step 3: Push another half set of values, forcing wrap-around
+	// Step 3: Push another half set of values to force wrap-around
 	for i := 0; i < RING_SIZE/2; i++ {
 		rb.Push(1000000 + i)
 	}
 
-	// Step 4: Read the *remaining old values* first
+	// Step 4: Read the remaining old values
 	oldValues := make([]int, RING_SIZE/2)
 	n = rb.Read(oldValues)
 	if int(n) != RING_SIZE/2 {
 		t.Fatalf("Expected to read %d old values, got %d", RING_SIZE/2, n)
 	}
-	// Optionally verify the old values are correct
 	for i, v := range oldValues {
 		expected := RING_SIZE/2 + i
 		if v != expected {
-			t.Fatalf("Old value mismatch at index %d: expected %d, got %d",
-				i, expected, v)
+			t.Fatalf("Old value mismatch at index %d: expected %d, got %d", i, expected, v)
 		}
 	}
 
-	// Step 5: Finally, read the new wrapped-around values
+	// Step 5: Read the new wrapped-around values
 	newValues := make([]int, RING_SIZE/2)
 	n = rb.Read(newValues)
 	if int(n) != RING_SIZE/2 {
 		t.Fatalf("Expected to read %d wrapped values, got %d", RING_SIZE/2, n)
 	}
-
 	for i, v := range newValues {
 		expected := 1000000 + i
 		if v != expected {
-			t.Fatalf("Wrap-around data mismatch at index %d: expected %d, got %d",
-				i, expected, v)
+			t.Fatalf("Wrap-around data mismatch at index %d: expected %d, got %d", i, expected, v)
 		}
 	}
 }
 
+// TestConcurrentProducerConsumer tests the ring buffer under concurrent
+// producer and consumer operations.
 func TestConcurrentProducerConsumer(t *testing.T) {
 	rb := NewRingBuffer[int]()
 	const total = 100000
 	var wg sync.WaitGroup
 
-	// Producer
+	// Producer goroutine
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -122,11 +131,11 @@ func TestConcurrentProducerConsumer(t *testing.T) {
 		}
 	}()
 
-	// Consumer
+	// Consumer goroutine
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		out := make([]int, 256)
+		out := make([]int, 256) // Read in batches
 		readCount := 0
 		for readCount < total {
 			n := rb.Read(out)
@@ -137,29 +146,30 @@ func TestConcurrentProducerConsumer(t *testing.T) {
 		}
 	}()
 
-	wg.Wait()
+	wg.Wait() // Wait for both producer and consumer
 }
 
+// TestEmptyBufferReadBlocksUntilPush ensures that a Read blocks if the buffer
+// is empty until a Push occurs.
 func TestEmptyBufferReadBlocksUntilPush(t *testing.T) {
 	rb := NewRingBuffer[int]()
 	out := make([]int, 1)
-
 	done := make(chan struct{})
 
 	go func() {
-		n := rb.Read(out)
+		n := rb.Read(out) // This should block until a value is pushed
 		if n != 1 {
 			t.Errorf("Expected to read 1 element, got %d", n)
 		}
 		close(done)
 	}()
 
-	time.Sleep(50 * time.Millisecond) // Ensure goroutine is waiting
-	rb.Push(99)
+	time.Sleep(50 * time.Millisecond) // Give goroutine time to start and block
+	rb.Push(99)                       // Unblock the reader
 
 	select {
 	case <-done:
-		// Test passed
+		// Read successfully unblocked
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("Read did not unblock after Push")
 	}
@@ -169,6 +179,8 @@ func TestEmptyBufferReadBlocksUntilPush(t *testing.T) {
 	}
 }
 
+// TestFullBufferPushBlocksUntilRead ensures that a Push blocks if the buffer
+// is full until a Read frees space.
 func TestFullBufferPushBlocksUntilRead(t *testing.T) {
 	rb := NewRingBuffer[int]()
 
@@ -180,8 +192,9 @@ func TestFullBufferPushBlocksUntilRead(t *testing.T) {
 	started := time.Now()
 	done := make(chan struct{})
 
+	// Attempt to push into full buffer
 	go func() {
-		rb.Push(12345) // This should block until space is freed
+		rb.Push(12345) // This should block until a slot is freed
 		close(done)
 	}()
 
@@ -193,11 +206,12 @@ func TestFullBufferPushBlocksUntilRead(t *testing.T) {
 
 	select {
 	case <-done:
-		// Success
+		// Push successfully unblocked
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("Push did not unblock after Read")
 	}
 
+	// Verify the buffer size invariant: writePos - readPos should equal RING_SIZE
 	if atomic.LoadUint64(&rb.writePos)-atomic.LoadUint64(&rb.readPos) != RING_SIZE {
 		t.Fatalf("Buffer size invariant broken")
 	}
@@ -207,6 +221,7 @@ func TestFullBufferPushBlocksUntilRead(t *testing.T) {
 	}
 }
 
+// TestGenericSupport ensures that the ring buffer works with custom types.
 func TestGenericSupport(t *testing.T) {
 	type custom struct {
 		ID   int
