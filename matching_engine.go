@@ -53,17 +53,6 @@ func (e *MatchingEngine) Limit(symbol Symbol, side Side, price Price, size Size,
 	e.orderID++
 	newOrderID := e.orderID
 
-	// Pick internal slot (recycled or new)
-	var slot uint32
-	if e.freeHead != e.freeTail {
-		slot = e.freeSlots[e.freeHead&FREE_MASK]
-		e.freeHead++
-	} else {
-		slot = uint32(newOrderID)
-	}
-
-	e.orderIndex[newOrderID] = slot
-
 	// Build Order object based on function parameters
 	order := Order{
 		Size: size,
@@ -87,7 +76,7 @@ func (e *MatchingEngine) Limit(symbol Symbol, side Side, price Price, size Size,
 	// Add unfilled portion to book
 	if remaining > 0 {
 		order.Size = remaining
-		e.addToBook(book, &order, side, price, newOrderID, slot)
+		e.addToBook(book, &order, side, price, newOrderID)
 	}
 }
 
@@ -157,7 +146,7 @@ func (e *MatchingEngine) matchLevel(level *PriceLevel, remaining Size, price Pri
 // Insert order into appropriate price level queue (FIFO)
 //
 //go:inline
-func (e *MatchingEngine) addToBook(book *OrderBook, order *Order, oSide Side, oPrice Price, oID OrderID, slot uint32) {
+func (e *MatchingEngine) addToBook(book *OrderBook, order *Order, oSide Side, oPrice Price, oID OrderID) {
 	var level *PriceLevel
 
 	if oSide == Bid {
@@ -187,6 +176,17 @@ func (e *MatchingEngine) addToBook(book *OrderBook, order *Order, oSide Side, oP
 		order.Prev = level.tail
 		level.tail = oID
 	}
+
+	// Pick internal slot (recycled or new)
+	var slot uint32
+	if e.freeHead != e.freeTail {
+		slot = e.freeSlots[e.freeHead&FREE_MASK]
+		e.freeHead++
+	} else {
+		slot = uint32(oID)
+	}
+
+	e.orderIndex[oID] = slot
 
 	e.orders[slot] = *order
 	level.size++
