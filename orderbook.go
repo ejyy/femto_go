@@ -1,12 +1,16 @@
 package main
 
-type OrderID uint32
-type Price uint32
-type Size uint32
-type TraderID uint16
-type Side uint8
-type Symbol uint16
+// Type definitions for Order constituents
+type (
+	OrderID  uint32
+	Price    uint32
+	Size     uint32
+	TraderID uint16
+	Symbol   uint16
+	Side     uint8
+)
 
+// Side types
 const (
 	Bid Side = iota // Buy orders
 	Ask             // Sell orders
@@ -20,7 +24,7 @@ type Order struct {
 	Size  Size
 }
 
-// Order book with separate bid/ask price levels
+// Orderbook with separate bid/ask price levels
 type OrderBook struct {
 	bidMax Price // Best (highest) bid price
 	askMin Price // Best (lowest) ask price
@@ -29,14 +33,14 @@ type OrderBook struct {
 	askLevels [MAX_PRICE_LEVELS]PriceLevel // Sell order queues by price
 }
 
-// FIFO queue of orders at a specific price level
+// Pricelevel serving as a FIFO queue of orders at a specific price
 type PriceLevel struct {
 	head OrderID // First order (oldest)
 	tail OrderID // Last order (newest)
-	size uint32  // Total orders at this level
+	size uint32  // Total number of discrete orders at this level (not volume)
 }
 
-// Scan for next best bid price (descending)
+// updateBestBid scans for the next best bid price (descending)
 func (book *OrderBook) updateBestBid() {
 	for price := book.bidMax; price > 0; price-- {
 		if book.bidLevels[price].size > 0 {
@@ -47,7 +51,7 @@ func (book *OrderBook) updateBestBid() {
 	book.bidMax = 0 // No bids remaining
 }
 
-// Scan for next best ask price (ascending)
+// updateBestAsk scans for the next best ask price (ascending)
 func (book *OrderBook) updateBestAsk() {
 	for price := book.askMin; price < MAX_PRICE_LEVELS; price++ {
 		if book.askLevels[price].size > 0 {
