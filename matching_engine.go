@@ -53,11 +53,6 @@ func (e *MatchingEngine) Limit(symbol Symbol, side Side, price Price, size Size,
 	e.orderID++
 	newOrderID := e.orderID
 
-	// Build Order object based on function parameters
-	order := Order{
-		Size: size,
-	}
-
 	// Report order receipt
 	e.outputRing.Push(OutputEvent{
 		Type:    ORDER_EVENT,
@@ -71,20 +66,19 @@ func (e *MatchingEngine) Limit(symbol Symbol, side Side, price Price, size Size,
 
 	// Lookup and match according to symbol
 	book := &e.books[symbol]
-	remaining := e.match(book, &order, symbol, side, price, trader, newOrderID)
+	remaining := e.match(book, size, symbol, side, price, trader, newOrderID)
 
 	// Add unfilled portion to book
 	if remaining > 0 {
-		order.Size = remaining
-		e.addToBook(book, &order, side, price, newOrderID)
+		e.addToBook(book, remaining, side, price, newOrderID)
 	}
 }
 
 // Match incoming order against opposite side of book
 //
 //go:inline
-func (e *MatchingEngine) match(book *OrderBook, order *Order, oSymbol Symbol, oSide Side, oPrice Price, oTrader TraderID, oID OrderID) (remaining Size) {
-	remaining = order.Size
+func (e *MatchingEngine) match(book *OrderBook, oSize Size, oSymbol Symbol, oSide Side, oPrice Price, oTrader TraderID, oID OrderID) (remaining Size) {
+	remaining = oSize
 
 	if oSide == Bid {
 		// Buy order matches against asks at or below bid price
@@ -146,7 +140,7 @@ func (e *MatchingEngine) matchLevel(level *PriceLevel, remaining Size, price Pri
 // Insert order into appropriate price level queue (FIFO)
 //
 //go:inline
-func (e *MatchingEngine) addToBook(book *OrderBook, order *Order, oSide Side, oPrice Price, oID OrderID) {
+func (e *MatchingEngine) addToBook(book *OrderBook, size Size, oSide Side, oPrice Price, oID OrderID) {
 	var level *PriceLevel
 
 	if oSide == Bid {
@@ -163,19 +157,21 @@ func (e *MatchingEngine) addToBook(book *OrderBook, order *Order, oSide Side, oP
 		}
 	}
 
-	order.Level = level
+	order := Order{
+		Size:  size,
+		Level: level,
+	}
 
 	// Initialize empty level or append to tail
 	if level.head == 0 {
 		level.head = oID
-		level.tail = oID
 	} else {
 		tailSlot := e.orderIndex[level.tail]
 		tail := &e.orders[tailSlot]
 		tail.Next = oID
 		order.Prev = level.tail
-		level.tail = oID
 	}
+	level.tail = oID
 
 	// Pick internal slot (recycled or new)
 	var slot uint32
@@ -188,7 +184,7 @@ func (e *MatchingEngine) addToBook(book *OrderBook, order *Order, oSide Side, oP
 
 	e.orderIndex[oID] = slot
 
-	e.orders[slot] = *order
+	e.orders[slot] = order
 	level.size++
 }
 
