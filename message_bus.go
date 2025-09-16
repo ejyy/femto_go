@@ -18,25 +18,25 @@ const (
 
 // Output event sent by matching engine to report something (eg. Order, execution)
 type OutputEvent struct {
-	eventType      EventType
 	orderID        OrderID
 	price          Price
 	size           Size
+	counterOrderID OrderID // For executions (counterparty OrderID)
 	trader         TraderID
 	symbol         Symbol
+	eventType      EventType
 	side           Side
-	counterOrderID OrderID // For executions (counterparty OrderID)
 }
 
 // Input command received by matching engine (related to exchange Order struct)
 type InputCommand struct {
-	eventType EventType
-	symbol    Symbol
-	side      Side
 	price     Price
 	size      Size
-	trader    TraderID
 	orderID   OrderID // To allow cancels, not for providing a custom OrderID
+	symbol    Symbol
+	trader    TraderID
+	eventType EventType
+	side      Side
 }
 
 // StartInputDistributor distributes input commands to the matching engine

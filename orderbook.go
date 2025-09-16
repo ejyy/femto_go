@@ -18,9 +18,9 @@ const (
 
 // Order with intrusive linked list for FIFO queues (price/time priority)
 type Order struct {
+	level *PriceLevel
 	prev  OrderID // Previous order in PriceLevel queue
 	next  OrderID // Next order in PriceLevel queue
-	level *PriceLevel
 	size  Size
 }
 
