@@ -33,8 +33,8 @@ func main() {
 		atomic.AddUint64(&totalOutputs, 1) // Increment to demonstrate messages received back
 
 		// Keep recent OrderIDs updated on order events
-		if ev.Type == ORDER_EVENT {
-			recentIDs[recentCount%DISTRIBUTOR_BUFFER] = ev.OrderID
+		if ev.eventType == ORDER_EVENT {
+			recentIDs[recentCount%DISTRIBUTOR_BUFFER] = ev.orderID
 			recentCount++
 		}
 	})
@@ -49,17 +49,17 @@ func main() {
 		if fastRand()%10 == 0 && recentCount > 0 {
 			idx := fastRand() % uint32(min(recentCount, DISTRIBUTOR_BUFFER))
 			cmd = InputCommand{
-				Type:    CANCEL_EVENT,
-				OrderID: recentIDs[idx],
+				eventType: CANCEL_EVENT,
+				orderID:   recentIDs[idx],
 			}
 		} else {
 			cmd = InputCommand{
-				Type:   ORDER_EVENT,
-				Symbol: Symbol(fastRand() % MAX_SYMBOLS),
-				Trader: TraderID(fastRand()%1000 + 1),
-				Price:  Price(100 + fastRand()%200),
-				Side:   Side(fastRand() % 2),
-				Size:   Size(fastRand()%1000 + 1),
+				eventType: ORDER_EVENT,
+				symbol:    Symbol(fastRand() % MAX_SYMBOLS),
+				trader:    TraderID(fastRand()%1000 + 1),
+				price:     Price(100 + fastRand()%200),
+				side:      Side(fastRand() % 2),
+				size:      Size(fastRand()%1000 + 1),
 			}
 		}
 

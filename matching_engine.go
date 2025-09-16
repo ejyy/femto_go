@@ -46,7 +46,7 @@ func NewMatchingEngine() *MatchingEngine {
 func (e *MatchingEngine) Limit(symbol Symbol, side Side, price Price, size Size, trader TraderID) {
 	// Validate order parameters
 	if price == 0 || size == 0 || price >= MAX_PRICE_LEVELS {
-		e.outputRing.Push(OutputEvent{Type: REJECT_EVENT})
+		e.outputRing.Push(OutputEvent{eventType: REJECT_EVENT})
 		return
 	}
 
@@ -55,13 +55,13 @@ func (e *MatchingEngine) Limit(symbol Symbol, side Side, price Price, size Size,
 
 	// Report order receipt
 	e.outputRing.Push(OutputEvent{
-		Type:    ORDER_EVENT,
-		OrderID: newOrderID,
-		Price:   price,
-		Size:    size,
-		Trader:  trader,
-		Symbol:  symbol,
-		Side:    side,
+		eventType: ORDER_EVENT,
+		orderID:   newOrderID,
+		price:     price,
+		size:      size,
+		trader:    trader,
+		symbol:    symbol,
+		side:      side,
 	})
 
 	// Lookup and match according to symbol
@@ -108,26 +108,26 @@ func (e *MatchingEngine) matchLevel(level *PriceLevel, remaining Size, price Pri
 	for counterID := level.head; counterID != 0 && remaining > 0; {
 		counterSlot := e.orderIndex[counterID]
 		counterOrder := &e.orders[counterSlot]
-		nextCounterID := counterOrder.Next // Save before potential unlink
+		nextCounterID := counterOrder.next // Save before potential unlink
 
-		fillSize := min(remaining, counterOrder.Size)
+		fillSize := min(remaining, counterOrder.size)
 
 		// Report trade execution
 		e.outputRing.Push(OutputEvent{
-			Type:           EXECUTION_EVENT,
-			OrderID:        oID,
-			Price:          price, // Trade at resting order price
-			Size:           fillSize,
-			Trader:         oTrader,
-			Symbol:         oSymbol,
-			CounterOrderID: counterID,
+			eventType:      EXECUTION_EVENT,
+			orderID:        oID,
+			price:          price, // Trade at resting order price
+			size:           fillSize,
+			trader:         oTrader,
+			symbol:         oSymbol,
+			counterOrderID: counterID,
 		})
 
 		remaining -= fillSize
-		counterOrder.Size -= fillSize
+		counterOrder.size -= fillSize
 
 		// Remove fully filled orders
-		if counterOrder.Size == 0 {
+		if counterOrder.size == 0 {
 			e.unlink(level, counterID, counterSlot)
 		}
 
@@ -158,8 +158,8 @@ func (e *MatchingEngine) addToBook(book *OrderBook, size Size, oSide Side, oPric
 	}
 
 	order := Order{
-		Size:  size,
-		Level: level,
+		size:  size,
+		level: level,
 	}
 
 	// Initialize empty level or append to tail
@@ -168,8 +168,8 @@ func (e *MatchingEngine) addToBook(book *OrderBook, size Size, oSide Side, oPric
 	} else {
 		tailSlot := e.orderIndex[level.tail]
 		tail := &e.orders[tailSlot]
-		tail.Next = oID
-		order.Prev = level.tail
+		tail.next = oID
+		order.prev = level.tail
 	}
 	level.tail = oID
 
@@ -192,7 +192,7 @@ func (e *MatchingEngine) addToBook(book *OrderBook, size Size, oSide Side, oPric
 func (e *MatchingEngine) Cancel(cancelOrderID OrderID) {
 	// Validate order ID
 	if cancelOrderID == 0 || cancelOrderID > e.orderID {
-		e.outputRing.Push(OutputEvent{Type: REJECT_EVENT})
+		e.outputRing.Push(OutputEvent{eventType: REJECT_EVENT})
 		return
 	}
 
@@ -200,18 +200,18 @@ func (e *MatchingEngine) Cancel(cancelOrderID OrderID) {
 	cancelOrder := &e.orders[cancelSlot]
 
 	// Already filled, cancelled or recycled
-	if cancelOrder.Size == 0 || cancelSlot == 0 {
-		e.outputRing.Push(OutputEvent{Type: REJECT_EVENT})
+	if cancelOrder.size == 0 || cancelSlot == 0 {
+		e.outputRing.Push(OutputEvent{eventType: REJECT_EVENT})
 		return
 	}
 
-	e.unlink(cancelOrder.Level, cancelOrderID, cancelSlot)
-	cancelOrder.Size = 0 // Mark as cancelled
+	e.unlink(cancelOrder.level, cancelOrderID, cancelSlot)
+	cancelOrder.size = 0 // Mark as cancelled
 
 	// Report order cancellation
 	e.outputRing.Push(OutputEvent{
-		Type:    CANCEL_EVENT,
-		OrderID: cancelOrderID,
+		eventType: CANCEL_EVENT,
+		orderID:   cancelOrderID,
 	})
 }
 
@@ -222,19 +222,19 @@ func (e *MatchingEngine) unlink(level *PriceLevel, unlinkOrderID OrderID, unlink
 	unlinkOrder := &e.orders[unlinkSlot]
 
 	// Update previous order's next OrderID
-	if unlinkOrder.Prev != 0 {
-		prevSlot := e.orderIndex[unlinkOrder.Prev]
-		e.orders[prevSlot].Next = unlinkOrder.Next
+	if unlinkOrder.prev != 0 {
+		prevSlot := e.orderIndex[unlinkOrder.prev]
+		e.orders[prevSlot].next = unlinkOrder.next
 	} else {
-		level.head = unlinkOrder.Next // This was the head
+		level.head = unlinkOrder.next // This was the head
 	}
 
 	// Update next order's previous OrderID
-	if unlinkOrder.Next != 0 {
-		nextSlot := e.orderIndex[unlinkOrder.Next]
-		e.orders[nextSlot].Prev = unlinkOrder.Prev
+	if unlinkOrder.next != 0 {
+		nextSlot := e.orderIndex[unlinkOrder.next]
+		e.orders[nextSlot].prev = unlinkOrder.prev
 	} else {
-		level.tail = unlinkOrder.Prev // This was the tail
+		level.tail = unlinkOrder.prev // This was the tail
 	}
 
 	// Push into freeSlots array if there is room
@@ -245,8 +245,8 @@ func (e *MatchingEngine) unlink(level *PriceLevel, unlinkOrderID OrderID, unlink
 	}
 
 	// Clear references and decrement size
-	unlinkOrder.Next = 0
-	unlinkOrder.Prev = 0
+	unlinkOrder.next = 0
+	unlinkOrder.prev = 0
 	level.size--
 	e.orderIndex[unlinkOrderID] = 0
 }

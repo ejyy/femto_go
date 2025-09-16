@@ -35,12 +35,12 @@ func TestStartInputDistributor_OrderProducesOrderEvent(t *testing.T) {
 
 	// Push an InputCommand into inputRing.
 	cmd := InputCommand{
-		Type:   ORDER_EVENT,
-		Symbol: 1,
-		Side:   Bid,
-		Price:  10,
-		Size:   5,
-		Trader: 7,
+		eventType: ORDER_EVENT,
+		symbol:    1,
+		side:      Bid,
+		price:     10,
+		size:      5,
+		trader:    7,
 	}
 	e.inputRing.Push(cmd)
 
@@ -52,10 +52,10 @@ func TestStartInputDistributor_OrderProducesOrderEvent(t *testing.T) {
 
 	found := false
 	for _, ev := range events {
-		if ev.Type == ORDER_EVENT {
+		if ev.eventType == ORDER_EVENT {
 			found = true
 			// basic sanity checks
-			if ev.Price != 10 || ev.Size != 5 || ev.Trader != 7 || ev.Symbol != 1 {
+			if ev.price != 10 || ev.size != 5 || ev.trader != 7 || ev.symbol != 1 {
 				t.Fatalf("order event fields mismatch: got %+v", ev)
 			}
 		}
@@ -72,12 +72,12 @@ func TestStartInputDistributor_CancelProducesCancelEvent(t *testing.T) {
 
 	// 1) Create an order first by sending an ORDER_EVENT command.
 	createCmd := InputCommand{
-		Type:   ORDER_EVENT,
-		Symbol: 2,
-		Side:   Ask,
-		Price:  20,
-		Size:   3,
-		Trader: 9,
+		eventType: ORDER_EVENT,
+		symbol:    2,
+		side:      Ask,
+		price:     20,
+		size:      3,
+		trader:    9,
 	}
 	e.inputRing.Push(createCmd)
 
@@ -96,8 +96,8 @@ loopCreate:
 				continue
 			}
 			for _, ev := range events {
-				if ev.Type == ORDER_EVENT {
-					createdOrderID = ev.OrderID
+				if ev.eventType == ORDER_EVENT {
+					createdOrderID = ev.orderID
 					break loopCreate
 				}
 			}
@@ -110,8 +110,8 @@ loopCreate:
 
 	// 2) Now send a CANCEL_EVENT for that OrderID.
 	cancelCmd := InputCommand{
-		Type:    CANCEL_EVENT,
-		OrderID: createdOrderID,
+		eventType: CANCEL_EVENT,
+		orderID:   createdOrderID,
 	}
 	e.inputRing.Push(cancelCmd)
 
@@ -128,7 +128,7 @@ loopCreate:
 				continue
 			}
 			for _, ev := range events {
-				if ev.Type == CANCEL_EVENT && ev.OrderID == createdOrderID {
+				if ev.eventType == CANCEL_EVENT && ev.orderID == createdOrderID {
 					foundCancel = true
 					break
 				}
@@ -150,15 +150,15 @@ func TestStartOutputDistributor_CallbackInvoked(t *testing.T) {
 
 	// Push an OutputEvent into the engine's output ring.
 	out := OutputEvent{
-		Type:    REJECT_EVENT,
-		OrderID: 0,
+		eventType: REJECT_EVENT,
+		orderID:   0,
 	}
 	e.outputRing.Push(out)
 
 	// Wait for callback to be invoked.
 	select {
 	case got := <-cbCh:
-		if got.Type != REJECT_EVENT {
+		if got.eventType != REJECT_EVENT {
 			t.Fatalf("callback received wrong event type: %+v", got)
 		}
 	case <-time.After(200 * time.Millisecond):

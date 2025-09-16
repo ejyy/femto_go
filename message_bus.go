@@ -18,25 +18,25 @@ const (
 
 // Output event sent by matching engine to report something (eg. Order, execution)
 type OutputEvent struct {
-	Type           EventType
-	OrderID        OrderID
-	Price          Price
-	Size           Size
-	Trader         TraderID
-	Symbol         Symbol
-	Side           Side
-	CounterOrderID OrderID // For executions (counterparty OrderID)
+	eventType      EventType
+	orderID        OrderID
+	price          Price
+	size           Size
+	trader         TraderID
+	symbol         Symbol
+	side           Side
+	counterOrderID OrderID // For executions (counterparty OrderID)
 }
 
 // Input command received by matching engine (related to exchange Order struct)
 type InputCommand struct {
-	Type    EventType
-	Symbol  Symbol
-	Side    Side
-	Price   Price
-	Size    Size
-	Trader  TraderID
-	OrderID OrderID // To allow cancels, not for providing a custom OrderID
+	eventType EventType
+	symbol    Symbol
+	side      Side
+	price     Price
+	size      Size
+	trader    TraderID
+	orderID   OrderID // To allow cancels, not for providing a custom OrderID
 }
 
 // StartInputDistributor distributes input commands to the matching engine
@@ -46,11 +46,11 @@ func (e *MatchingEngine) StartInputDistributor() {
 		n := e.inputRing.Read(buf)
 		for i := 0; uint32(i) < n; i++ {
 			ev := &buf[i]
-			switch ev.Type {
+			switch ev.eventType {
 			case ORDER_EVENT: // New order command
-				e.Limit(ev.Symbol, ev.Side, ev.Price, ev.Size, ev.Trader)
+				e.Limit(ev.symbol, ev.side, ev.price, ev.size, ev.trader)
 			case CANCEL_EVENT: // New cancel command
-				e.Cancel(ev.OrderID)
+				e.Cancel(ev.orderID)
 			}
 		}
 	}

@@ -18,10 +18,10 @@ const (
 
 // Order with intrusive linked list for FIFO queues (price/time priority)
 type Order struct {
-	Prev  OrderID // Previous order in PriceLevel queue
-	Next  OrderID // Next order in PriceLevel queue
-	Level *PriceLevel
-	Size  Size
+	prev  OrderID // Previous order in PriceLevel queue
+	next  OrderID // Next order in PriceLevel queue
+	level *PriceLevel
+	size  Size
 }
 
 // Orderbook with separate bid/ask price levels
