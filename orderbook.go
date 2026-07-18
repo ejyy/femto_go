@@ -8,6 +8,7 @@ type (
 	TraderID uint16
 	Symbol   uint16
 	Side     uint8
+	Slot     uint32
 )
 
 // Side types
@@ -18,10 +19,11 @@ const (
 
 // Order with intrusive linked list for FIFO queues (price/time priority)
 type Order struct {
-	level *PriceLevel
-	prev  OrderID // Previous order in PriceLevel queue
-	next  OrderID // Next order in PriceLevel queue
-	size  Size
+	level    *PriceLevel
+	id       OrderID
+	prevSlot Slot // Previous order in PriceLevel queue
+	nextSlot Slot // Next order in PriceLevel queue
+	size     Size
 }
 
 // Orderbook with separate bid/ask price levels
@@ -35,13 +37,13 @@ type OrderBook struct {
 
 // Pricelevel serving as a FIFO queue of orders at a specific price
 type PriceLevel struct {
-	head OrderID // First order (oldest)
-	tail OrderID // Last order (newest)
-	size uint32  // Total number of discrete orders at this level (not volume)
+	headSlot Slot   // First order (oldest)
+	tailSlot Slot   // Last order (newest)
+	size     uint32 // Total number of discrete orders at this level (not volume)
 }
 
 // updateBestBid scans for the next best bid price (descending)
-func (book *OrderBook) updateBestBid() {
+func (book *OrderBook) updateBidMax() {
 	for price := book.bidMax; price > 0; price-- {
 		if book.bidLevels[price].size > 0 {
 			book.bidMax = price
@@ -52,7 +54,7 @@ func (book *OrderBook) updateBestBid() {
 }
 
 // updateBestAsk scans for the next best ask price (ascending)
-func (book *OrderBook) updateBestAsk() {
+func (book *OrderBook) updateAskMin() {
 	for price := book.askMin; price < MAX_PRICE_LEVELS; price++ {
 		if book.askLevels[price].size > 0 {
 			book.askMin = price

@@ -12,8 +12,8 @@ const (
 type MatchingEngine struct {
 	books [MAX_SYMBOLS]OrderBook // Order books per symbol
 
-	orders     [MAX_ORDERS]Order  // Pre-allocated order pool
-	orderIndex [MAX_ORDERS]uint32 // External OrderID -> internal slot index
+	orders     [MAX_ORDERS]Order // Pre-allocated order pool
+	orderIndex [MAX_ORDERS]Slot  // External OrderID -> internal slot index
 
 	orderID OrderID // Monotonic order ID generator
 
@@ -31,7 +31,7 @@ func NewMatchingEngine() *MatchingEngine {
 		outputRing: NewRingBuffer[OutputEvent](),
 	}
 
-	// Set  ask minimum to initial value (no asks)
+	// Set ask minimum to initial value (no asks)
 	for i := range e.books {
 		e.books[i] = OrderBook{
 			askMin: MAX_PRICE_LEVELS,
@@ -75,8 +75,6 @@ func (e *MatchingEngine) Limit(symbol Symbol, side Side, price Price, size Size,
 }
 
 // Match incoming order against opposite side of book
-//
-//go:inline
 func (e *MatchingEngine) match(book *OrderBook, oSize Size, oSymbol Symbol, oSide Side, oPrice Price, oTrader TraderID, oID OrderID) (remaining Size) {
 	remaining = oSize
 
@@ -84,16 +82,16 @@ func (e *MatchingEngine) match(book *OrderBook, oSize Size, oSymbol Symbol, oSid
 		// Buy order matches against asks at or below bid price
 		for remaining > 0 && book.askMin < MAX_PRICE_LEVELS && book.askMin <= oPrice {
 			remaining = e.matchLevel(&book.askLevels[book.askMin], remaining, book.askMin, oSymbol, oTrader, oID)
-			if remaining > 0 && book.askLevels[book.askMin].head == 0 { // Only checks if PriceLevel exhausted
-				book.updateBestAsk() // Find next best ask
+			if remaining > 0 && book.askLevels[book.askMin].headSlot == 0 { // Only checks if PriceLevel exhausted
+				book.updateAskMin() // Find next best ask
 			}
 		}
 	} else {
 		// Sell order matches against bids at or above ask price
 		for remaining > 0 && book.bidMax > 0 && book.bidMax >= oPrice {
 			remaining = e.matchLevel(&book.bidLevels[book.bidMax], remaining, book.bidMax, oSymbol, oTrader, oID)
-			if remaining > 0 && book.bidLevels[book.bidMax].head == 0 { // Only checks if PriceLevel exhausted
-				book.updateBestBid() // Find next best bid
+			if remaining > 0 && book.bidLevels[book.bidMax].headSlot == 0 { // Only checks if PriceLevel exhausted
+				book.updateBidMax() // Find next best bid
 			}
 		}
 	}
@@ -102,13 +100,10 @@ func (e *MatchingEngine) match(book *OrderBook, oSize Size, oSymbol Symbol, oSid
 }
 
 // Execute trades against orders at specific price level (FIFO)
-//
-//go:inline
 func (e *MatchingEngine) matchLevel(level *PriceLevel, remaining Size, price Price, oSymbol Symbol, oTrader TraderID, oID OrderID) Size {
-	for counterID := level.head; counterID != 0 && remaining > 0; {
-		counterSlot := e.orderIndex[counterID]
+	for counterSlot := level.headSlot; counterSlot != 0 && remaining > 0; {
 		counterOrder := &e.orders[counterSlot]
-		nextCounterID := counterOrder.next // Save before potential unlink
+		nextCounterSlot := counterOrder.nextSlot // Save before potential unlink
 
 		fillSize := min(remaining, counterOrder.size)
 
@@ -120,7 +115,7 @@ func (e *MatchingEngine) matchLevel(level *PriceLevel, remaining Size, price Pri
 			size:           fillSize,
 			trader:         oTrader,
 			symbol:         oSymbol,
-			counterOrderID: counterID,
+			counterOrderID: counterOrder.id,
 		})
 
 		remaining -= fillSize
@@ -128,18 +123,16 @@ func (e *MatchingEngine) matchLevel(level *PriceLevel, remaining Size, price Pri
 
 		// Remove fully filled orders
 		if counterOrder.size == 0 {
-			e.unlink(level, counterID, counterSlot)
+			e.unlink(level, counterSlot)
 		}
 
-		counterID = nextCounterID
+		counterSlot = nextCounterSlot
 	}
 
 	return remaining
 }
 
 // Insert order into appropriate price level queue (FIFO)
-//
-//go:inline
 func (e *MatchingEngine) addToBook(book *OrderBook, size Size, oSide Side, oPrice Price, oID OrderID) {
 	var level *PriceLevel
 
@@ -157,35 +150,35 @@ func (e *MatchingEngine) addToBook(book *OrderBook, size Size, oSide Side, oPric
 		}
 	}
 
-	order := Order{
-		size:  size,
-		level: level,
-	}
-
-	// Initialize empty level or append to tail
-	if level.head == 0 {
-		level.head = oID
-	} else {
-		tailSlot := e.orderIndex[level.tail]
-		tail := &e.orders[tailSlot]
-		tail.next = oID
-		order.prev = level.tail
-	}
-	level.tail = oID
-
 	// Pick internal slot (recycled or new)
-	var slot uint32
+	var slot Slot
 	if e.freeHead != e.freeTail {
-		slot = e.freeSlots[e.freeHead&FREE_MASK]
+		slot = Slot(e.freeSlots[e.freeHead&FREE_MASK])
 		e.freeHead++
 	} else {
-		slot = uint32(oID)
+		slot = Slot(oID)
 	}
 
-	e.orderIndex[oID] = slot
+	order := &e.orders[slot]
+	*order = Order{
+		level: level,
+		id:    oID,
+		size:  size,
+	}
 
-	e.orders[slot] = order
+	// Link into tail of the queue, using slots instead of OrderIDs
+	if level.headSlot == 0 {
+		level.headSlot = slot
+	} else {
+		tail := &e.orders[level.tailSlot]
+		tail.nextSlot = slot
+		order.prevSlot = level.tailSlot
+	}
+	level.tailSlot = slot
 	level.size++
+
+	// External ID -> internal slot
+	e.orderIndex[oID] = slot
 }
 
 // Cancel order by removing from price level queue
@@ -205,7 +198,7 @@ func (e *MatchingEngine) Cancel(cancelOrderID OrderID) {
 		return
 	}
 
-	e.unlink(cancelOrder.level, cancelOrderID, cancelSlot)
+	e.unlink(cancelOrder.level, cancelSlot)
 	cancelOrder.size = 0 // Mark as cancelled
 
 	// Report order cancellation
@@ -216,37 +209,31 @@ func (e *MatchingEngine) Cancel(cancelOrderID OrderID) {
 }
 
 // Remove order from doubly-linked list maintaining FIFO integrity
-//
-//go:inline
-func (e *MatchingEngine) unlink(level *PriceLevel, unlinkOrderID OrderID, unlinkSlot uint32) {
-	unlinkOrder := &e.orders[unlinkSlot]
+func (e *MatchingEngine) unlink(level *PriceLevel, slot Slot) {
+	order := &e.orders[slot]
 
-	// Update previous order's next OrderID
-	if unlinkOrder.prev != 0 {
-		prevSlot := e.orderIndex[unlinkOrder.prev]
-		e.orders[prevSlot].next = unlinkOrder.next
+	if order.prevSlot != 0 {
+		e.orders[order.prevSlot].nextSlot = order.nextSlot
 	} else {
-		level.head = unlinkOrder.next // This was the head
+		level.headSlot = order.nextSlot // was the head
 	}
 
-	// Update next order's previous OrderID
-	if unlinkOrder.next != 0 {
-		nextSlot := e.orderIndex[unlinkOrder.next]
-		e.orders[nextSlot].prev = unlinkOrder.prev
+	if order.nextSlot != 0 {
+		e.orders[order.nextSlot].prevSlot = order.prevSlot
 	} else {
-		level.tail = unlinkOrder.prev // This was the tail
+		level.tailSlot = order.prevSlot // was the tail
 	}
 
-	// Push into freeSlots array if there is room
+	level.size--
+	e.orderIndex[order.id] = 0 // clear external -> slot mapping
+
+	// Push into freeSlots ring if there's room
 	nextTail := (e.freeTail + 1) & FREE_MASK
 	if nextTail != (e.freeHead & FREE_MASK) {
-		e.freeSlots[e.freeTail&FREE_MASK] = unlinkSlot
+		e.freeSlots[e.freeTail&FREE_MASK] = uint32(slot)
 		e.freeTail++
 	}
 
-	// Clear references and decrement size
-	unlinkOrder.next = 0
-	unlinkOrder.prev = 0
-	level.size--
-	e.orderIndex[unlinkOrderID] = 0
+	order.prevSlot = 0
+	order.nextSlot = 0
 }
