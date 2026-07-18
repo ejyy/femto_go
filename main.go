@@ -30,7 +30,9 @@ func main() {
 	// Start input / output distributors
 	go engine.StartInputDistributor()
 	go engine.StartOutputDistributor(func(ev OutputEvent) {
-		atomic.AddUint64(&totalOutputs, 1) // Increment to demonstrate messages received back
+		if ev.eventType != EXECUTION_EVENT {
+			atomic.AddUint64(&totalOutputs, 1)
+		}
 
 		// Keep recent OrderIDs updated on order events
 		if ev.eventType == ORDER_EVENT {
