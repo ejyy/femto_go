@@ -1,11 +1,9 @@
 package main
 
 const (
-	MAX_SYMBOLS      = 1 << 8         // 256 trading symbols
-	MAX_PRICE_LEVELS = 1 << 14        // 16,384 price ticks
-	MAX_ORDERS       = 1 << 26        // 67M total orders
-	FREE_SLOTS       = 1 << 10        // 1024 free order slots
-	FREE_MASK        = FREE_SLOTS - 1 // Free slot mask
+	MAX_SYMBOLS      = 1 << 8  // 256 trading symbols
+	MAX_PRICE_LEVELS = 1 << 14 // 16,384 price ticks
+	MAX_ORDERS       = 1 << 26 // 67M total orders
 )
 
 // Exchange engine with pre-allocated arrays
@@ -17,9 +15,7 @@ type MatchingEngine struct {
 
 	orderID OrderID // Monotonic order ID generator
 
-	freeSlots [FREE_SLOTS]uint32 // 'Recycled' Order slots
-	freeHead  uint32             // First free slot
-	freeTail  uint32             // Next empty slot
+	freeHead Slot // Next free slot
 
 	inputRing  *RingBuffer[InputCommand] // Incoming commands
 	outputRing *RingBuffer[OutputEvent]  // Outgoing events
@@ -152,9 +148,9 @@ func (e *MatchingEngine) addToBook(book *OrderBook, size Size, oSide Side, oPric
 
 	// Pick internal slot (recycled or new)
 	var slot Slot
-	if e.freeHead != e.freeTail {
-		slot = Slot(e.freeSlots[e.freeHead&FREE_MASK])
-		e.freeHead++
+	if e.freeHead != 0 {
+		slot = e.freeHead
+		e.freeHead = e.orders[slot].nextSlot
 	} else {
 		slot = Slot(oID)
 	}
@@ -227,13 +223,8 @@ func (e *MatchingEngine) unlink(level *PriceLevel, slot Slot) {
 	level.size--
 	e.orderIndex[order.id] = 0 // clear external -> slot mapping
 
-	// Push into freeSlots ring if there's room
-	nextTail := (e.freeTail + 1) & FREE_MASK
-	if nextTail != (e.freeHead & FREE_MASK) {
-		e.freeSlots[e.freeTail&FREE_MASK] = uint32(slot)
-		e.freeTail++
-	}
-
+	// Update nextSlot
+	order.nextSlot = e.freeHead
+	e.freeHead = slot
 	order.prevSlot = 0
-	order.nextSlot = 0
 }
