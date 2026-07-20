@@ -1,11 +1,5 @@
 package main
 
-const (
-	MAX_SYMBOLS      = 1 << 8  // 256 trading symbols
-	MAX_PRICE_LEVELS = 1 << 14 // 16,384 price ticks
-	MAX_ORDERS       = 1 << 26 // 67M total orders
-)
-
 // Exchange engine with pre-allocated arrays
 type MatchingEngine struct {
 	books [MAX_SYMBOLS]OrderBook // Order books per symbol

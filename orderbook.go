@@ -65,11 +65,8 @@ func (book *OrderBook) updateAskMin() {
 	book.askMin = MAX_PRICE_LEVELS // No asks remaining
 }
 
-const slotBits = 26 // matches MAX_ORDERS = 1<<26
-const slotMask = (1 << slotBits) - 1
-
 func makeOrderID(slot Slot, gen uint32) OrderID {
-	return OrderID(uint64(gen)<<slotBits | uint64(slot))
+	return OrderID(uint64(gen)<<SLOT_BITS | uint64(slot))
 }
-func (id OrderID) slot() Slot  { return Slot(id & slotMask) }
-func (id OrderID) gen() uint32 { return uint32(id >> slotBits) }
+func (id OrderID) slot() Slot  { return Slot(id & SLOT_MASK) }
+func (id OrderID) gen() uint32 { return uint32(id >> SLOT_BITS) }
