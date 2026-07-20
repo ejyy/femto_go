@@ -1,6 +1,5 @@
 package main
 
-// Type definitions for Order constituents
 type (
 	OrderID  uint64
 	Price    uint32
@@ -12,7 +11,6 @@ type (
 	Gen      uint32
 )
 
-// Side types
 const (
 	Bid Side = iota // Buy orders
 	Ask             // Sell orders
@@ -28,7 +26,6 @@ type Order struct {
 	size     Size
 }
 
-// Orderbook with separate bid/ask price levels
 type OrderBook struct {
 	bidMax Price // Best (highest) bid price
 	askMin Price // Best (lowest) ask price
@@ -37,7 +34,6 @@ type OrderBook struct {
 	askLevels [MAX_PRICE_LEVELS]PriceLevel // Sell order queues by price
 }
 
-// updateBestBid scans for the next best bid price (descending)
 func (book *OrderBook) updateBidMax() {
 	for price := book.bidMax; price > 0; price-- {
 		if book.bidLevels[price].count > 0 {
@@ -48,7 +44,6 @@ func (book *OrderBook) updateBidMax() {
 	book.bidMax = 0 // No bids remaining
 }
 
-// updateBestAsk scans for the next best ask price (ascending)
 func (book *OrderBook) updateAskMin() {
 	for price := book.askMin; price < MAX_PRICE_LEVELS; price++ {
 		if book.askLevels[price].count > 0 {
@@ -59,39 +54,39 @@ func (book *OrderBook) updateAskMin() {
 	book.askMin = MAX_PRICE_LEVELS // No asks remaining
 }
 
-func (book *OrderBook) add(pool *OrderPool, oSide Side, oPrice Price, oID OrderID, slot Slot, size Size) {
+func (book *OrderBook) add(pool *OrderPool, side Side, price Price, id OrderID, slot Slot, size Size) {
 	var level *PriceLevel
-	if oSide == Bid {
-		level = &book.bidLevels[oPrice]
-		if oPrice > book.bidMax {
-			book.bidMax = oPrice
+	if side == Bid {
+		level = &book.bidLevels[price]
+		if price > book.bidMax {
+			book.bidMax = price
 		}
 	} else {
-		level = &book.askLevels[oPrice]
-		if oPrice < book.askMin {
-			book.askMin = oPrice
+		level = &book.askLevels[price]
+		if price < book.askMin {
+			book.askMin = price
 		}
 	}
 
 	order := pool.get(slot)
-	order.id = oID
+	order.id = id
 	order.size = size
 	level.pushBack(pool, slot)
 }
 
-func (book *OrderBook) match(pool *OrderPool, outRing *RingBuffer[OutputEvent], oSize Size, oSymbol Symbol, oSide Side, oPrice Price, oTrader TraderID, oID OrderID) Size {
-	remaining := oSize
+func (book *OrderBook) match(pool *OrderPool, outRing *RingBuffer[OutputEvent], size Size, symbol Symbol, side Side, price Price, trader TraderID, id OrderID) Size {
+	remaining := size
 
-	if oSide == Bid {
-		for remaining > 0 && book.askMin < MAX_PRICE_LEVELS && book.askMin <= oPrice {
-			remaining = book.matchLevel(&book.askLevels[book.askMin], pool, outRing, remaining, book.askMin, oSymbol, oTrader, oID)
+	if side == Bid {
+		for remaining > 0 && book.askMin < MAX_PRICE_LEVELS && book.askMin <= price {
+			remaining = book.matchLevel(&book.askLevels[book.askMin], pool, outRing, remaining, book.askMin, symbol, trader, id)
 			if remaining > 0 && book.askLevels[book.askMin].headSlot == 0 {
 				book.updateAskMin()
 			}
 		}
 	} else {
-		for remaining > 0 && book.bidMax > 0 && book.bidMax >= oPrice {
-			remaining = book.matchLevel(&book.bidLevels[book.bidMax], pool, outRing, remaining, book.bidMax, oSymbol, oTrader, oID)
+		for remaining > 0 && book.bidMax > 0 && book.bidMax >= price {
+			remaining = book.matchLevel(&book.bidLevels[book.bidMax], pool, outRing, remaining, book.bidMax, symbol, trader, id)
 			if remaining > 0 && book.bidLevels[book.bidMax].headSlot == 0 {
 				book.updateBidMax()
 			}
@@ -100,7 +95,7 @@ func (book *OrderBook) match(pool *OrderPool, outRing *RingBuffer[OutputEvent], 
 	return remaining
 }
 
-func (book *OrderBook) matchLevel(level *PriceLevel, pool *OrderPool, outRing *RingBuffer[OutputEvent], remaining Size, price Price, oSymbol Symbol, oTrader TraderID, oID OrderID) Size {
+func (book *OrderBook) matchLevel(level *PriceLevel, pool *OrderPool, outRing *RingBuffer[OutputEvent], remaining Size, price Price, symbol Symbol, trader TraderID, id OrderID) Size {
 	for counterSlot := level.headSlot; counterSlot != 0 && remaining > 0; {
 		counterOrder := pool.get(counterSlot)
 		nextCounterSlot := counterOrder.nextSlot
@@ -109,12 +104,12 @@ func (book *OrderBook) matchLevel(level *PriceLevel, pool *OrderPool, outRing *R
 
 		outRing.Push(OutputEvent{
 			eventType:      EXECUTION_EVENT,
-			orderID:        oID,
+			orderID:        id,
 			counterOrderID: counterOrder.id,
 			price:          price,
 			size:           fillSize,
-			trader:         oTrader,
-			symbol:         oSymbol,
+			trader:         trader,
+			symbol:         symbol,
 		})
 
 		remaining -= fillSize

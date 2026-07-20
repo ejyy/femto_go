@@ -26,7 +26,7 @@ func (level *PriceLevel) pushBack(pool *OrderPool, slot Slot) {
 	level.count++
 }
 
-// Remove unlinks an order and returns it to the free pool
+// remove unlinks an order and returns it to the free pool
 func (level *PriceLevel) remove(pool *OrderPool, slot Slot) {
 	order := pool.get(slot)
 

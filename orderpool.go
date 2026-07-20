@@ -2,8 +2,8 @@ package main
 
 type OrderPool struct {
 	orders       [MAX_ORDERS]Order
-	freeHead     Slot
-	nextFreeSlot Slot
+	freeHead     Slot // Head of the free list (0 means empty)
+	nextFreeSlot Slot // Next slot to allocate if free list is empty
 }
 
 func NewOrderPool() *OrderPool {

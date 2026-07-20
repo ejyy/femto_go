@@ -7,7 +7,9 @@ import (
 )
 
 const (
-	N = 70_000_000 // Number of orders to process in the benchmark
+	N           = 70_000_000 // Number of orders to process in the benchmark
+	PRICE_RANGE = 200        // Price range for random orders
+	SIZE_RANGE  = 1000       // Size range for random orders
 )
 
 var rng uint64 = 1755956219406641000 // Fixed seed for reproducibility
@@ -62,9 +64,9 @@ func main() {
 				eventType: ORDER_EVENT,
 				symbol:    Symbol(fastRand() % MAX_SYMBOLS),
 				trader:    TraderID(fastRand()%1000 + 1),
-				price:     Price(100 + fastRand()%200),
+				price:     Price(100 + fastRand()%PRICE_RANGE),
 				side:      Side(fastRand() % 2),
-				size:      Size(fastRand()%1000 + 1),
+				size:      Size(fastRand()%SIZE_RANGE + 1),
 			}
 		}
 

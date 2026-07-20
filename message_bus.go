@@ -1,6 +1,5 @@
 package main
 
-// Constant defining the message bus buffer size
 const (
 	DISTRIBUTOR_BUFFER = 1 << 10 // 1024 events size
 )
@@ -41,7 +40,7 @@ type InputCommand struct {
 
 // StartInputDistributor distributes input commands to the matching engine
 func (e *MatchingEngine) StartInputDistributor() {
-	buf := make([]InputCommand, DISTRIBUTOR_BUFFER) // Pre-allocated buffer
+	buf := make([]InputCommand, DISTRIBUTOR_BUFFER)
 	for {
 		n := e.inputRing.Read(buf)
 		for i := 0; uint32(i) < n; i++ {
@@ -58,7 +57,7 @@ func (e *MatchingEngine) StartInputDistributor() {
 
 // StartOutputDistributor distributes output events from the matching engine
 func (e *MatchingEngine) StartOutputDistributor(callbackFunc func(OutputEvent)) {
-	buf := make([]OutputEvent, DISTRIBUTOR_BUFFER) // Pre-allocated buffer
+	buf := make([]OutputEvent, DISTRIBUTOR_BUFFER)
 	for {
 		n := e.outputRing.Read(buf)
 		for i := 0; uint32(i) < n; i++ {

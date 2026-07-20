@@ -25,18 +25,21 @@ func NewMatchingEngine() *MatchingEngine {
 		outputRing: NewRingBuffer[OutputEvent](),
 	}
 
+	// Initialize order books for each symbol
 	for i := range e.books {
 		e.books[i] = OrderBook{askMin: MAX_PRICE_LEVELS, bidMax: 0}
 	}
 	return e
 }
 
+// Add a new limit order to the order book
 func (e *MatchingEngine) Limit(symbol Symbol, side Side, price Price, size Size, trader TraderID) {
 	if price == 0 || size == 0 || price >= MAX_PRICE_LEVELS {
 		e.outputRing.Push(OutputEvent{eventType: REJECT_EVENT})
 		return
 	}
 
+	// Allocate a new order slot and generate a unique order ID
 	slot, gen := e.pool.alloc()
 	newOrderID := OrderID(uint64(gen)<<SLOT_BITS | uint64(slot))
 
@@ -57,11 +60,12 @@ func (e *MatchingEngine) Limit(symbol Symbol, side Side, price Price, size Size,
 	if remaining > 0 {
 		book.add(e.pool, side, price, newOrderID, slot, remaining)
 	} else {
-		e.pool.free(slot) // fully filled, never entered book so recycle immediately
+		e.pool.free(slot) // Free the slot if the order was fully matched
 	}
 }
 
 func (e *MatchingEngine) Cancel(id OrderID) {
+	// Extract the slot from the order ID
 	slot := Slot(id & SLOT_MASK)
 
 	if !e.pool.isValid(slot) {
@@ -71,6 +75,7 @@ func (e *MatchingEngine) Cancel(id OrderID) {
 
 	order := e.pool.get(slot)
 
+	// Check if the order is valid and not already canceled
 	if order.gen != Gen(id>>SLOT_BITS) || order.size == 0 {
 		e.outputRing.Push(OutputEvent{eventType: REJECT_EVENT})
 		return
