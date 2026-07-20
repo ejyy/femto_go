@@ -2,6 +2,13 @@ package main
 
 import "sync/atomic"
 
+// Constants defining the ring buffer properties
+const (
+	RING_SIZE       = 1 << 16       // 65,536 elements - must be a power of 2 for efficient masking
+	RING_MASK       = RING_SIZE - 1 // Mask for fast modulo operation using bitwise AND
+	CACHE_LINE_SIZE = 64            // Typical CPU cache line size to avoid false sharing
+)
+
 // Lock-free ring buffer supporting a single producer and a single consumer (SPSC)
 // Generic type T allows storing any type of element.
 type RingBuffer[T any] struct {

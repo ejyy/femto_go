@@ -1,5 +1,10 @@
 package main
 
+// Constant defining the message bus buffer size
+const (
+	DISTRIBUTOR_BUFFER = 1 << 10 // 1024 events size
+)
+
 // Matching engine event types
 type EventType uint8
 

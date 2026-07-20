@@ -1,5 +1,13 @@
 package main
 
+// Constants for matching engine
+const (
+	MAX_PRICE_LEVELS = 1 << 14 // 16,384 price ticks
+
+	SLOT_BITS = 26
+	SLOT_MASK = (1 << SLOT_BITS) - 1
+)
+
 // Type definitions for Order constituents
 type (
 	OrderID  uint64
