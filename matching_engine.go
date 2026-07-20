@@ -170,7 +170,7 @@ func (e *MatchingEngine) addToBook(book *OrderBook, size Size, oSide Side, oPric
 		order.prevSlot = level.tailSlot
 	}
 	level.tailSlot = slot
-	level.size++
+	level.count++
 }
 
 // Cancel order by removing from price level queue
@@ -203,6 +203,6 @@ func (e *MatchingEngine) unlink(level *PriceLevel, slot Slot) {
 	} else {
 		level.tailSlot = order.prevSlot
 	}
-	level.size--
+	level.count--
 	e.freeSlot(slot)
 }

@@ -40,13 +40,13 @@ type OrderBook struct {
 type PriceLevel struct {
 	headSlot Slot   // First order (oldest)
 	tailSlot Slot   // Last order (newest)
-	size     uint32 // Total number of discrete orders at this level (not volume)
+	count    uint32 // Total number of discrete orders at this level (not volume)
 }
 
 // updateBestBid scans for the next best bid price (descending)
 func (book *OrderBook) updateBidMax() {
 	for price := book.bidMax; price > 0; price-- {
-		if book.bidLevels[price].size > 0 {
+		if book.bidLevels[price].count > 0 {
 			book.bidMax = price
 			return
 		}
@@ -57,7 +57,7 @@ func (book *OrderBook) updateBidMax() {
 // updateBestAsk scans for the next best ask price (ascending)
 func (book *OrderBook) updateAskMin() {
 	for price := book.askMin; price < MAX_PRICE_LEVELS; price++ {
-		if book.askLevels[price].size > 0 {
+		if book.askLevels[price].count > 0 {
 			book.askMin = price
 			return
 		}

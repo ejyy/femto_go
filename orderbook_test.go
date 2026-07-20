@@ -10,7 +10,7 @@ func makePriceLevel(size uint32) PriceLevel {
 	return PriceLevel{
 		headSlot: Slot(1),    // Dummy OrderID
 		tailSlot: Slot(size), // Dummy OrderID
-		size:     size,
+		count:    size,
 	}
 }
 
@@ -217,14 +217,14 @@ func TestUpdateAskMin_Exhaustive(t *testing.T) {
 
 func TestPriceLevelSizeChanges(t *testing.T) {
 	pl := makePriceLevel(3)
-	if pl.size != 3 {
-		t.Errorf("expected size 3, got %d", pl.size)
+	if pl.count != 3 {
+		t.Errorf("expected count 3, got %d", pl.count)
 	}
 
 	// Simulate removing all orders
-	pl.size = 0
-	if pl.size != 0 {
-		t.Errorf("expected size 0 after clearing, got %d", pl.size)
+	pl.count = 0
+	if pl.count != 0 {
+		t.Errorf("expected count 0 after clearing, got %d", pl.count)
 	}
 
 	// Single order
