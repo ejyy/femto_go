@@ -17,6 +17,7 @@ type (
 	Symbol   uint16
 	Side     uint8
 	Slot     uint32
+	Gen      uint32
 )
 
 // Side types
@@ -29,9 +30,9 @@ const (
 type Order struct {
 	level    *PriceLevel
 	id       OrderID
-	gen      uint32 // Generation counter for this order (to avoid stale references)
-	prevSlot Slot   // Previous order in PriceLevel queue
-	nextSlot Slot   // Next order in PriceLevel queue
+	gen      Gen  // Generation counter for this order (to avoid stale references)
+	prevSlot Slot // Previous order in PriceLevel queue
+	nextSlot Slot // Next order in PriceLevel queue
 	size     Size
 }
 
@@ -73,8 +74,8 @@ func (book *OrderBook) updateAskMin() {
 	book.askMin = MAX_PRICE_LEVELS // No asks remaining
 }
 
-func makeOrderID(slot Slot, gen uint32) OrderID {
+func makeOrderID(slot Slot, gen Gen) OrderID {
 	return OrderID(uint64(gen)<<SLOT_BITS | uint64(slot))
 }
-func (id OrderID) slot() Slot  { return Slot(id & SLOT_MASK) }
-func (id OrderID) gen() uint32 { return uint32(id >> SLOT_BITS) }
+func (id OrderID) slot() Slot { return Slot(id & SLOT_MASK) }
+func (id OrderID) gen() Gen   { return Gen(id >> SLOT_BITS) }

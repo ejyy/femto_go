@@ -64,7 +64,7 @@ func (e *MatchingEngine) Limit(symbol Symbol, side Side, price Price, size Size,
 	}
 }
 
-func (e *MatchingEngine) allocSlot() (Slot, uint32) {
+func (e *MatchingEngine) allocSlot() (Slot, Gen) {
 	var slot Slot
 	if e.freeHead != 0 {
 		slot = e.freeHead
