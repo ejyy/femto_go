@@ -122,38 +122,6 @@ func (e *MatchingEngine) matchLevel(level *PriceLevel, remaining Size, price Pri
 	return remaining
 }
 
-// Insert order into appropriate price level queue (FIFO)
-func (e *MatchingEngine) addToBook(book *OrderBook, size Size, oSide Side, oPrice Price, oID OrderID, slot Slot) {
-	var level *PriceLevel
-	if oSide == Bid {
-		level = &book.bidLevels[oPrice]
-		if oPrice > book.bidMax {
-			book.bidMax = oPrice
-		}
-	} else {
-		level = &book.askLevels[oPrice]
-		if oPrice < book.askMin {
-			book.askMin = oPrice
-		}
-	}
-
-	order := &e.orders[slot]
-	order.level = level
-	order.id = oID
-	order.size = size
-	order.prevSlot, order.nextSlot = 0, 0
-
-	if level.headSlot == 0 {
-		level.headSlot = slot
-	} else {
-		tail := &e.orders[level.tailSlot]
-		tail.nextSlot = slot
-		order.prevSlot = level.tailSlot
-	}
-	level.tailSlot = slot
-	level.count++
-}
-
 // Cancel order by removing from price level queue
 func (e *MatchingEngine) Cancel(id OrderID) {
 	slot := id.slot()
@@ -169,21 +137,4 @@ func (e *MatchingEngine) Cancel(id OrderID) {
 	e.unlink(order.level, slot)
 	order.size = 0
 	e.outputRing.Push(OutputEvent{eventType: CANCEL_EVENT, orderID: id})
-}
-
-// Remove order from doubly-linked list maintaining FIFO integrity
-func (e *MatchingEngine) unlink(level *PriceLevel, slot Slot) {
-	order := &e.orders[slot]
-	if order.prevSlot != 0 {
-		e.orders[order.prevSlot].nextSlot = order.nextSlot
-	} else {
-		level.headSlot = order.nextSlot
-	}
-	if order.nextSlot != 0 {
-		e.orders[order.nextSlot].prevSlot = order.prevSlot
-	} else {
-		level.tailSlot = order.prevSlot
-	}
-	level.count--
-	e.freeSlot(slot)
 }
