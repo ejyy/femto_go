@@ -46,7 +46,7 @@ func (e *MatchingEngine) Limit(symbol Symbol, side Side, price Price, size Size,
 	}
 
 	slot, gen := e.allocSlot()
-	newOrderID := makeOrderID(slot, gen)
+	newOrderID := NewOrderID(slot, gen)
 
 	e.outputRing.Push(OutputEvent{
 		eventType: ORDER_EVENT,
@@ -62,25 +62,6 @@ func (e *MatchingEngine) Limit(symbol Symbol, side Side, price Price, size Size,
 	} else {
 		e.freeSlot(slot) // fully filled, never entered book — recycle immediately
 	}
-}
-
-func (e *MatchingEngine) allocSlot() (Slot, Gen) {
-	var slot Slot
-	if e.freeHead != 0 {
-		slot = e.freeHead
-		e.freeHead = e.orders[slot].nextSlot
-	} else {
-		e.nextFreeSlot++
-		slot = e.nextFreeSlot
-	}
-	return slot, e.orders[slot].gen
-}
-
-func (e *MatchingEngine) freeSlot(slot Slot) {
-	order := &e.orders[slot]
-	order.gen++
-	order.nextSlot = e.freeHead
-	e.freeHead = slot
 }
 
 // Match incoming order against opposite side of book
@@ -176,7 +157,7 @@ func (e *MatchingEngine) addToBook(book *OrderBook, size Size, oSide Side, oPric
 // Cancel order by removing from price level queue
 func (e *MatchingEngine) Cancel(id OrderID) {
 	slot := id.slot()
-	if slot == 0 || slot > e.nextFreeSlot {
+	if !e.validSlot(slot) {
 		e.outputRing.Push(OutputEvent{eventType: REJECT_EVENT})
 		return
 	}

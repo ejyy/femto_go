@@ -3,9 +3,6 @@ package main
 // Constants for matching engine
 const (
 	MAX_PRICE_LEVELS = 1 << 14 // 16,384 price ticks
-
-	SLOT_BITS = 26
-	SLOT_MASK = (1 << SLOT_BITS) - 1
 )
 
 // Type definitions for Order constituents
@@ -73,9 +70,3 @@ func (book *OrderBook) updateAskMin() {
 	}
 	book.askMin = MAX_PRICE_LEVELS // No asks remaining
 }
-
-func makeOrderID(slot Slot, gen Gen) OrderID {
-	return OrderID(uint64(gen)<<SLOT_BITS | uint64(slot))
-}
-func (id OrderID) slot() Slot { return Slot(id & SLOT_MASK) }
-func (id OrderID) gen() Gen   { return Gen(id >> SLOT_BITS) }
