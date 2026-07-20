@@ -2,7 +2,7 @@ package main
 
 // Type definitions for Order constituents
 type (
-	OrderID  uint32
+	OrderID  uint64
 	Price    uint32
 	Size     uint32
 	TraderID uint16
@@ -21,8 +21,9 @@ const (
 type Order struct {
 	level    *PriceLevel
 	id       OrderID
-	prevSlot Slot // Previous order in PriceLevel queue
-	nextSlot Slot // Next order in PriceLevel queue
+	gen      uint32 // Generation counter for this order (to avoid stale references)
+	prevSlot Slot   // Previous order in PriceLevel queue
+	nextSlot Slot   // Next order in PriceLevel queue
 	size     Size
 }
 
@@ -63,3 +64,12 @@ func (book *OrderBook) updateAskMin() {
 	}
 	book.askMin = MAX_PRICE_LEVELS // No asks remaining
 }
+
+const slotBits = 26 // matches MAX_ORDERS = 1<<26
+const slotMask = (1 << slotBits) - 1
+
+func makeOrderID(slot Slot, gen uint32) OrderID {
+	return OrderID(uint64(gen)<<slotBits | uint64(slot))
+}
+func (id OrderID) slot() Slot  { return Slot(id & slotMask) }
+func (id OrderID) gen() uint32 { return uint32(id >> slotBits) }

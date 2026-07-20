@@ -10,12 +10,12 @@ const (
 type MatchingEngine struct {
 	books [MAX_SYMBOLS]OrderBook // Order books per symbol
 
-	orders     [MAX_ORDERS]Order // Pre-allocated order pool
-	orderIndex [MAX_ORDERS]Slot  // External OrderID -> internal slot index
+	orders [MAX_ORDERS]Order // Pre-allocated order pool
 
 	orderID OrderID // Monotonic order ID generator
 
-	freeHead Slot // Next free slot
+	freeHead     Slot
+	nextFreeSlot Slot
 
 	inputRing  *RingBuffer[InputCommand] // Incoming commands
 	outputRing *RingBuffer[OutputEvent]  // Outgoing events
@@ -40,34 +40,47 @@ func NewMatchingEngine() *MatchingEngine {
 
 // Process limit order with matching and book insertion
 func (e *MatchingEngine) Limit(symbol Symbol, side Side, price Price, size Size, trader TraderID) {
-	// Validate order parameters
 	if price == 0 || size == 0 || price >= MAX_PRICE_LEVELS {
 		e.outputRing.Push(OutputEvent{eventType: REJECT_EVENT})
 		return
 	}
 
-	e.orderID++
-	newOrderID := e.orderID
+	slot, gen := e.allocSlot()
+	newOrderID := makeOrderID(slot, gen)
 
-	// Report order receipt
 	e.outputRing.Push(OutputEvent{
 		eventType: ORDER_EVENT,
 		orderID:   newOrderID,
-		price:     price,
-		size:      size,
-		trader:    trader,
-		symbol:    symbol,
-		side:      side,
+		price:     price, size: size, trader: trader, symbol: symbol, side: side,
 	})
 
-	// Lookup and match according to symbol
 	book := &e.books[symbol]
 	remaining := e.match(book, size, symbol, side, price, trader, newOrderID)
 
-	// Add unfilled portion to book
 	if remaining > 0 {
-		e.addToBook(book, remaining, side, price, newOrderID)
+		e.addToBook(book, remaining, side, price, newOrderID, slot)
+	} else {
+		e.freeSlot(slot) // fully filled, never entered book — recycle immediately
 	}
+}
+
+func (e *MatchingEngine) allocSlot() (Slot, uint32) {
+	var slot Slot
+	if e.freeHead != 0 {
+		slot = e.freeHead
+		e.freeHead = e.orders[slot].nextSlot
+	} else {
+		e.nextFreeSlot++
+		slot = e.nextFreeSlot
+	}
+	return slot, e.orders[slot].gen
+}
+
+func (e *MatchingEngine) freeSlot(slot Slot) {
+	order := &e.orders[slot]
+	order.gen++
+	order.nextSlot = e.freeHead
+	e.freeHead = slot
 }
 
 // Match incoming order against opposite side of book
@@ -129,40 +142,26 @@ func (e *MatchingEngine) matchLevel(level *PriceLevel, remaining Size, price Pri
 }
 
 // Insert order into appropriate price level queue (FIFO)
-func (e *MatchingEngine) addToBook(book *OrderBook, size Size, oSide Side, oPrice Price, oID OrderID) {
+func (e *MatchingEngine) addToBook(book *OrderBook, size Size, oSide Side, oPrice Price, oID OrderID, slot Slot) {
 	var level *PriceLevel
-
 	if oSide == Bid {
 		level = &book.bidLevels[oPrice]
-		// Update best bid if this is higher
 		if oPrice > book.bidMax {
 			book.bidMax = oPrice
 		}
 	} else {
 		level = &book.askLevels[oPrice]
-		// Update best ask if this is lower
 		if oPrice < book.askMin {
 			book.askMin = oPrice
 		}
 	}
 
-	// Pick internal slot (recycled or new)
-	var slot Slot
-	if e.freeHead != 0 {
-		slot = e.freeHead
-		e.freeHead = e.orders[slot].nextSlot
-	} else {
-		slot = Slot(oID)
-	}
-
 	order := &e.orders[slot]
-	*order = Order{
-		level: level,
-		id:    oID,
-		size:  size,
-	}
+	order.level = level
+	order.id = oID
+	order.size = size
+	order.prevSlot, order.nextSlot = 0, 0
 
-	// Link into tail of the queue, using slots instead of OrderIDs
 	if level.headSlot == 0 {
 		level.headSlot = slot
 	} else {
@@ -172,59 +171,38 @@ func (e *MatchingEngine) addToBook(book *OrderBook, size Size, oSide Side, oPric
 	}
 	level.tailSlot = slot
 	level.size++
-
-	// External ID -> internal slot
-	e.orderIndex[oID] = slot
 }
 
 // Cancel order by removing from price level queue
-func (e *MatchingEngine) Cancel(cancelOrderID OrderID) {
-	// Validate order ID
-	if cancelOrderID == 0 || cancelOrderID > e.orderID {
+func (e *MatchingEngine) Cancel(id OrderID) {
+	slot := id.slot()
+	if slot == 0 || slot > e.nextFreeSlot {
 		e.outputRing.Push(OutputEvent{eventType: REJECT_EVENT})
 		return
 	}
-
-	cancelSlot := e.orderIndex[cancelOrderID]
-	cancelOrder := &e.orders[cancelSlot]
-
-	// Already filled, cancelled or recycled
-	if cancelOrder.size == 0 || cancelSlot == 0 {
-		e.outputRing.Push(OutputEvent{eventType: REJECT_EVENT})
+	order := &e.orders[slot]
+	if order.gen != id.gen() || order.size == 0 {
+		e.outputRing.Push(OutputEvent{eventType: REJECT_EVENT}) // stale/reused/already-cancelled ID
 		return
 	}
-
-	e.unlink(cancelOrder.level, cancelSlot)
-	cancelOrder.size = 0 // Mark as cancelled
-
-	// Report order cancellation
-	e.outputRing.Push(OutputEvent{
-		eventType: CANCEL_EVENT,
-		orderID:   cancelOrderID,
-	})
+	e.unlink(order.level, slot)
+	order.size = 0
+	e.outputRing.Push(OutputEvent{eventType: CANCEL_EVENT, orderID: id})
 }
 
 // Remove order from doubly-linked list maintaining FIFO integrity
 func (e *MatchingEngine) unlink(level *PriceLevel, slot Slot) {
 	order := &e.orders[slot]
-
 	if order.prevSlot != 0 {
 		e.orders[order.prevSlot].nextSlot = order.nextSlot
 	} else {
-		level.headSlot = order.nextSlot // was the head
+		level.headSlot = order.nextSlot
 	}
-
 	if order.nextSlot != 0 {
 		e.orders[order.nextSlot].prevSlot = order.prevSlot
 	} else {
-		level.tailSlot = order.prevSlot // was the tail
+		level.tailSlot = order.prevSlot
 	}
-
 	level.size--
-	e.orderIndex[order.id] = 0 // clear external -> slot mapping
-
-	// Update nextSlot
-	order.nextSlot = e.freeHead
-	e.freeHead = slot
-	order.prevSlot = 0
+	e.freeSlot(slot)
 }
