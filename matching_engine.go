@@ -1,140 +1,81 @@
 package main
 
-// Constants for matching engine
 const (
-	MAX_SYMBOLS = 1 << 8         // 256 trading symbols
-	MAX_ORDERS  = 1 << SLOT_BITS // 67M total orders
+	MAX_SYMBOLS      = 1 << 8  // 256 trading symbols
+	MAX_PRICE_LEVELS = 1 << 14 // 16,384 price ticks
+
+	SLOT_BITS = 26
+	SLOT_MASK = (1 << SLOT_BITS) - 1
+
+	MAX_ORDERS = 1 << SLOT_BITS // 67M total orders
 )
 
-// Exchange engine with pre-allocated arrays
 type MatchingEngine struct {
-	books [MAX_SYMBOLS]OrderBook // Order books per symbol
+	books [MAX_SYMBOLS]OrderBook
+	pool  *OrderPool
 
-	orders [MAX_ORDERS]Order // Pre-allocated order pool
-
-	orderID OrderID // Monotonic order ID generator
-
-	freeHead     Slot
-	nextFreeSlot Slot
-
-	inputRing  *RingBuffer[InputCommand] // Incoming commands
-	outputRing *RingBuffer[OutputEvent]  // Outgoing events
+	inputRing  *RingBuffer[InputCommand]
+	outputRing *RingBuffer[OutputEvent]
 }
 
 func NewMatchingEngine() *MatchingEngine {
 	e := &MatchingEngine{
+		pool:       NewOrderPool(),
 		inputRing:  NewRingBuffer[InputCommand](),
 		outputRing: NewRingBuffer[OutputEvent](),
 	}
 
-	// Set ask minimum to initial value (no asks)
 	for i := range e.books {
-		e.books[i] = OrderBook{
-			askMin: MAX_PRICE_LEVELS,
-			bidMax: 0,
-		}
+		e.books[i] = OrderBook{askMin: MAX_PRICE_LEVELS, bidMax: 0}
 	}
-
 	return e
 }
 
-// Process limit order with matching and book insertion
 func (e *MatchingEngine) Limit(symbol Symbol, side Side, price Price, size Size, trader TraderID) {
 	if price == 0 || size == 0 || price >= MAX_PRICE_LEVELS {
 		e.outputRing.Push(OutputEvent{eventType: REJECT_EVENT})
 		return
 	}
 
-	slot, gen := e.allocSlot()
-	newOrderID := NewOrderID(slot, gen)
+	slot, gen := e.pool.alloc()
+	newOrderID := OrderID(uint64(gen)<<SLOT_BITS | uint64(slot))
 
 	e.outputRing.Push(OutputEvent{
 		eventType: ORDER_EVENT,
 		orderID:   newOrderID,
-		price:     price, size: size, trader: trader, symbol: symbol, side: side,
+		price:     price,
+		size:      size,
+		trader:    trader,
+		symbol:    symbol,
+		side:      side,
 	})
 
 	book := &e.books[symbol]
-	remaining := e.match(book, size, symbol, side, price, trader, newOrderID)
+
+	remaining := book.match(e.pool, e.outputRing, size, symbol, side, price, trader, newOrderID)
 
 	if remaining > 0 {
-		e.addToBook(book, remaining, side, price, newOrderID, slot)
+		book.add(e.pool, side, price, newOrderID, slot, remaining)
 	} else {
-		e.freeSlot(slot) // fully filled, never entered book — recycle immediately
+		e.pool.free(slot) // fully filled, never entered book so recycle immediately
 	}
 }
 
-// Match incoming order against opposite side of book
-func (e *MatchingEngine) match(book *OrderBook, oSize Size, oSymbol Symbol, oSide Side, oPrice Price, oTrader TraderID, oID OrderID) (remaining Size) {
-	remaining = oSize
-
-	if oSide == Bid {
-		// Buy order matches against asks at or below bid price
-		for remaining > 0 && book.askMin < MAX_PRICE_LEVELS && book.askMin <= oPrice {
-			remaining = e.matchLevel(&book.askLevels[book.askMin], remaining, book.askMin, oSymbol, oTrader, oID)
-			if remaining > 0 && book.askLevels[book.askMin].headSlot == 0 { // Only checks if PriceLevel exhausted
-				book.updateAskMin() // Find next best ask
-			}
-		}
-	} else {
-		// Sell order matches against bids at or above ask price
-		for remaining > 0 && book.bidMax > 0 && book.bidMax >= oPrice {
-			remaining = e.matchLevel(&book.bidLevels[book.bidMax], remaining, book.bidMax, oSymbol, oTrader, oID)
-			if remaining > 0 && book.bidLevels[book.bidMax].headSlot == 0 { // Only checks if PriceLevel exhausted
-				book.updateBidMax() // Find next best bid
-			}
-		}
-	}
-
-	return remaining
-}
-
-// Execute trades against orders at specific price level (FIFO)
-func (e *MatchingEngine) matchLevel(level *PriceLevel, remaining Size, price Price, oSymbol Symbol, oTrader TraderID, oID OrderID) Size {
-	for counterSlot := level.headSlot; counterSlot != 0 && remaining > 0; {
-		counterOrder := &e.orders[counterSlot]
-		nextCounterSlot := counterOrder.nextSlot // Save before potential unlink
-
-		fillSize := min(remaining, counterOrder.size)
-
-		// Report trade execution
-		e.outputRing.Push(OutputEvent{
-			eventType:      EXECUTION_EVENT,
-			orderID:        oID,
-			price:          price, // Trade at resting order price
-			size:           fillSize,
-			trader:         oTrader,
-			symbol:         oSymbol,
-			counterOrderID: counterOrder.id,
-		})
-
-		remaining -= fillSize
-		counterOrder.size -= fillSize
-
-		// Remove fully filled orders
-		if counterOrder.size == 0 {
-			e.unlink(level, counterSlot)
-		}
-
-		counterSlot = nextCounterSlot
-	}
-
-	return remaining
-}
-
-// Cancel order by removing from price level queue
 func (e *MatchingEngine) Cancel(id OrderID) {
-	slot := id.slot()
-	if !e.validSlot(slot) {
+	slot := Slot(id & SLOT_MASK)
+
+	if !e.pool.isValid(slot) {
 		e.outputRing.Push(OutputEvent{eventType: REJECT_EVENT})
 		return
 	}
-	order := &e.orders[slot]
-	if order.gen != id.gen() || order.size == 0 {
-		e.outputRing.Push(OutputEvent{eventType: REJECT_EVENT}) // stale/reused/already-cancelled ID
+
+	order := e.pool.get(slot)
+
+	if order.gen != Gen(id>>SLOT_BITS) || order.size == 0 {
+		e.outputRing.Push(OutputEvent{eventType: REJECT_EVENT})
 		return
 	}
-	e.unlink(order.level, slot)
-	order.size = 0
+
+	order.level.remove(e.pool, slot)
 	e.outputRing.Push(OutputEvent{eventType: CANCEL_EVENT, orderID: id})
 }

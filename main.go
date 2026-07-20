@@ -6,6 +6,10 @@ import (
 	"time"
 )
 
+const (
+	N = 70_000_000 // Number of orders to process in the benchmark
+)
+
 var rng uint64 = 1755956219406641000 // Fixed seed for reproducibility
 
 // Fast xorshift PRNG - much faster than crypto/rand for benchmarking
@@ -41,7 +45,6 @@ func main() {
 		}
 	})
 
-	const N = 70_000_000
 	start := time.Now()
 
 	for i := 0; i < N; i++ {

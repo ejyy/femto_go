@@ -1,10 +1,5 @@
 package main
 
-// Constants for matching engine
-const (
-	MAX_PRICE_LEVELS = 1 << 14 // 16,384 price ticks
-)
-
 // Type definitions for Order constituents
 type (
 	OrderID  uint64
@@ -42,13 +37,6 @@ type OrderBook struct {
 	askLevels [MAX_PRICE_LEVELS]PriceLevel // Sell order queues by price
 }
 
-// Pricelevel serving as a FIFO queue of orders at a specific price
-type PriceLevel struct {
-	headSlot Slot   // First order (oldest)
-	tailSlot Slot   // Last order (newest)
-	count    uint32 // Total number of discrete orders at this level (not volume)
-}
-
 // updateBestBid scans for the next best bid price (descending)
 func (book *OrderBook) updateBidMax() {
 	for price := book.bidMax; price > 0; price-- {
@@ -71,8 +59,7 @@ func (book *OrderBook) updateAskMin() {
 	book.askMin = MAX_PRICE_LEVELS // No asks remaining
 }
 
-// Insert order into appropriate price level queue (FIFO)
-func (e *MatchingEngine) addToBook(book *OrderBook, size Size, oSide Side, oPrice Price, oID OrderID, slot Slot) {
+func (book *OrderBook) add(pool *OrderPool, oSide Side, oPrice Price, oID OrderID, slot Slot, size Size) {
 	var level *PriceLevel
 	if oSide == Bid {
 		level = &book.bidLevels[oPrice]
@@ -86,36 +73,58 @@ func (e *MatchingEngine) addToBook(book *OrderBook, size Size, oSide Side, oPric
 		}
 	}
 
-	order := &e.orders[slot]
-	order.level = level
+	order := pool.get(slot)
 	order.id = oID
 	order.size = size
-	order.prevSlot, order.nextSlot = 0, 0
-
-	if level.headSlot == 0 {
-		level.headSlot = slot
-	} else {
-		tail := &e.orders[level.tailSlot]
-		tail.nextSlot = slot
-		order.prevSlot = level.tailSlot
-	}
-	level.tailSlot = slot
-	level.count++
+	level.pushBack(pool, slot)
 }
 
-// Remove order from doubly-linked list maintaining FIFO integrity
-func (e *MatchingEngine) unlink(level *PriceLevel, slot Slot) {
-	order := &e.orders[slot]
-	if order.prevSlot != 0 {
-		e.orders[order.prevSlot].nextSlot = order.nextSlot
+func (book *OrderBook) match(pool *OrderPool, outRing *RingBuffer[OutputEvent], oSize Size, oSymbol Symbol, oSide Side, oPrice Price, oTrader TraderID, oID OrderID) Size {
+	remaining := oSize
+
+	if oSide == Bid {
+		for remaining > 0 && book.askMin < MAX_PRICE_LEVELS && book.askMin <= oPrice {
+			remaining = book.matchLevel(&book.askLevels[book.askMin], pool, outRing, remaining, book.askMin, oSymbol, oTrader, oID)
+			if remaining > 0 && book.askLevels[book.askMin].headSlot == 0 {
+				book.updateAskMin()
+			}
+		}
 	} else {
-		level.headSlot = order.nextSlot
+		for remaining > 0 && book.bidMax > 0 && book.bidMax >= oPrice {
+			remaining = book.matchLevel(&book.bidLevels[book.bidMax], pool, outRing, remaining, book.bidMax, oSymbol, oTrader, oID)
+			if remaining > 0 && book.bidLevels[book.bidMax].headSlot == 0 {
+				book.updateBidMax()
+			}
+		}
 	}
-	if order.nextSlot != 0 {
-		e.orders[order.nextSlot].prevSlot = order.prevSlot
-	} else {
-		level.tailSlot = order.prevSlot
+	return remaining
+}
+
+func (book *OrderBook) matchLevel(level *PriceLevel, pool *OrderPool, outRing *RingBuffer[OutputEvent], remaining Size, price Price, oSymbol Symbol, oTrader TraderID, oID OrderID) Size {
+	for counterSlot := level.headSlot; counterSlot != 0 && remaining > 0; {
+		counterOrder := pool.get(counterSlot)
+		nextCounterSlot := counterOrder.nextSlot
+
+		fillSize := min(remaining, counterOrder.size)
+
+		// Direct push restored
+		outRing.Push(OutputEvent{
+			eventType:      EXECUTION_EVENT,
+			orderID:        oID,
+			counterOrderID: counterOrder.id,
+			price:          price,
+			size:           fillSize,
+			trader:         oTrader,
+			symbol:         oSymbol,
+		})
+
+		remaining -= fillSize
+		counterOrder.size -= fillSize
+
+		if counterOrder.size == 0 {
+			level.remove(pool, counterSlot)
+		}
+		counterSlot = nextCounterSlot
 	}
-	level.count--
-	e.freeSlot(slot)
+	return remaining
 }
