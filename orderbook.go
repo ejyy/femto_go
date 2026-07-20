@@ -107,7 +107,6 @@ func (book *OrderBook) matchLevel(level *PriceLevel, pool *OrderPool, outRing *R
 
 		fillSize := min(remaining, counterOrder.size)
 
-		// Direct push restored
 		outRing.Push(OutputEvent{
 			eventType:      EXECUTION_EVENT,
 			orderID:        oID,
