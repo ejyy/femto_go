@@ -10,7 +10,6 @@ func makePriceLevel(size uint32) PriceLevel {
 	return PriceLevel{
 		headSlot: Slot(1),    // Dummy OrderID
 		tailSlot: Slot(size), // Dummy OrderID
-		count:    size,
 	}
 }
 
@@ -212,24 +211,5 @@ func TestUpdateAskMin_Exhaustive(t *testing.T) {
 	book.updateAskMin()
 	if book.askMin != Price(lastPrice) {
 		t.Errorf("expected askMin %d, got %d", lastPrice, book.askMin)
-	}
-}
-
-func TestPriceLevelSizeChanges(t *testing.T) {
-	pl := makePriceLevel(3)
-	if pl.count != 3 {
-		t.Errorf("expected count 3, got %d", pl.count)
-	}
-
-	// Simulate removing all orders
-	pl.count = 0
-	if pl.count != 0 {
-		t.Errorf("expected count 0 after clearing, got %d", pl.count)
-	}
-
-	// Single order
-	pl = makePriceLevel(1)
-	if pl.headSlot != pl.tailSlot {
-		t.Errorf("expected head == tail for single order, got head=%d tail=%d", pl.headSlot, pl.tailSlot)
 	}
 }
