@@ -83,14 +83,8 @@ func (e *MatchingEngine) Cancel(id OrderID) {
 
 	book := &e.books[order.symbol]
 
-	var level *PriceLevel
-
-	if order.side == Bid {
-		level = &book.bidLevels[order.price]
-	} else {
-		level = &book.askLevels[order.price]
-	}
-
+	level := book.level(order.side, order.price)
 	level.remove(e.pool, slot)
+
 	e.outputRing.Push(OutputEvent{eventType: CANCEL_EVENT, orderID: id})
 }

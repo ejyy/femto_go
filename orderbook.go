@@ -56,15 +56,21 @@ func (book *OrderBook) updateAskMin() {
 	book.askMin = MAX_PRICE_LEVELS // No asks remaining
 }
 
-func (book *OrderBook) add(pool *OrderPool, side Side, price Price, id OrderID, slot Slot, size Size, symbol Symbol) {
-	var level *PriceLevel
+func (book *OrderBook) level(side Side, price Price) *PriceLevel {
 	if side == Bid {
-		level = &book.bidLevels[price]
+		return &book.bidLevels[price]
+	}
+	return &book.askLevels[price]
+}
+
+func (book *OrderBook) add(pool *OrderPool, side Side, price Price, id OrderID, slot Slot, size Size, symbol Symbol) {
+	level := book.level(side, price)
+
+	if side == Bid {
 		if price > book.bidMax {
 			book.bidMax = price
 		}
 	} else {
-		level = &book.askLevels[price]
 		if price < book.askMin {
 			book.askMin = price
 		}
