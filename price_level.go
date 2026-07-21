@@ -10,7 +10,6 @@ type PriceLevel struct {
 func (level *PriceLevel) pushBack(pool *OrderPool, slot Slot) {
 	order := pool.get(slot)
 
-	order.level = level
 	order.prevSlot = 0
 	order.nextSlot = 0
 

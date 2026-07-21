@@ -18,12 +18,14 @@ const (
 
 // Order with intrusive linked list for FIFO queues (price/time priority)
 type Order struct {
-	level    *PriceLevel
 	id       OrderID
+	price    Price
+	size     Size
 	gen      Gen  // Generation counter for this order (to avoid stale references)
 	prevSlot Slot // Previous order in PriceLevel queue
 	nextSlot Slot // Next order in PriceLevel queue
-	size     Size
+	symbol   Symbol
+	side     Side
 }
 
 type OrderBook struct {
@@ -54,7 +56,7 @@ func (book *OrderBook) updateAskMin() {
 	book.askMin = MAX_PRICE_LEVELS // No asks remaining
 }
 
-func (book *OrderBook) add(pool *OrderPool, side Side, price Price, id OrderID, slot Slot, size Size) {
+func (book *OrderBook) add(pool *OrderPool, side Side, price Price, id OrderID, slot Slot, size Size, symbol Symbol) {
 	var level *PriceLevel
 	if side == Bid {
 		level = &book.bidLevels[price]
@@ -71,6 +73,10 @@ func (book *OrderBook) add(pool *OrderPool, side Side, price Price, id OrderID, 
 	order := pool.get(slot)
 	order.id = id
 	order.size = size
+	order.side = side
+	order.price = price
+	order.symbol = symbol
+
 	level.pushBack(pool, slot)
 }
 

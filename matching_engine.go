@@ -58,7 +58,7 @@ func (e *MatchingEngine) Limit(symbol Symbol, side Side, price Price, size Size,
 	remaining := book.match(e.pool, e.outputRing, size, symbol, side, price, trader, newOrderID)
 
 	if remaining > 0 {
-		book.add(e.pool, side, price, newOrderID, slot, remaining)
+		book.add(e.pool, side, price, newOrderID, slot, remaining, symbol)
 	} else {
 		e.pool.free(slot) // Free the slot if the order was fully matched
 	}
@@ -81,6 +81,16 @@ func (e *MatchingEngine) Cancel(id OrderID) {
 		return
 	}
 
-	order.level.remove(e.pool, slot)
+	book := &e.books[order.symbol]
+
+	var level *PriceLevel
+
+	if order.side == Bid {
+		level = &book.bidLevels[order.price]
+	} else {
+		level = &book.askLevels[order.price]
+	}
+
+	level.remove(e.pool, slot)
 	e.outputRing.Push(OutputEvent{eventType: CANCEL_EVENT, orderID: id})
 }
