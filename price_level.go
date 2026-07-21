@@ -2,9 +2,8 @@ package main
 
 // Pricelevel serving as a FIFO queue of orders at a specific price
 type PriceLevel struct {
-	headSlot Slot   // First order (oldest)
-	tailSlot Slot   // Last order (newest)
-	count    uint32 // Total number of discrete orders at this level (not volume)
+	headSlot Slot // First order (oldest)
+	tailSlot Slot // Last order (newest)
 }
 
 // pushBack adds a new order to the tail of this price level
@@ -23,7 +22,6 @@ func (level *PriceLevel) pushBack(pool *OrderPool, slot Slot) {
 		order.prevSlot = level.tailSlot
 	}
 	level.tailSlot = slot
-	level.count++
 }
 
 // remove unlinks an order and returns it to the free pool
@@ -42,6 +40,5 @@ func (level *PriceLevel) remove(pool *OrderPool, slot Slot) {
 		level.tailSlot = order.prevSlot
 	}
 
-	level.count--
 	pool.free(slot)
 }

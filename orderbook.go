@@ -36,7 +36,7 @@ type OrderBook struct {
 
 func (book *OrderBook) updateBidMax() {
 	for price := book.bidMax; price > 0; price-- {
-		if book.bidLevels[price].count > 0 {
+		if book.bidLevels[price].headSlot != 0 {
 			book.bidMax = price
 			return
 		}
@@ -46,7 +46,7 @@ func (book *OrderBook) updateBidMax() {
 
 func (book *OrderBook) updateAskMin() {
 	for price := book.askMin; price < MAX_PRICE_LEVELS; price++ {
-		if book.askLevels[price].count > 0 {
+		if book.askLevels[price].headSlot != 0 {
 			book.askMin = price
 			return
 		}
