@@ -80,14 +80,14 @@ func (book *OrderBook) match(pool *OrderPool, outRing *RingBuffer[OutputEvent], 
 	if side == Bid {
 		for remaining > 0 && book.askMin < MAX_PRICE_LEVELS && book.askMin <= price {
 			remaining = book.matchLevel(&book.askLevels[book.askMin], pool, outRing, remaining, book.askMin, symbol, trader, id)
-			if remaining > 0 && book.askLevels[book.askMin].headSlot == 0 {
+			if book.askLevels[book.askMin].headSlot == 0 {
 				book.updateAskMin()
 			}
 		}
 	} else {
 		for remaining > 0 && book.bidMax > 0 && book.bidMax >= price {
 			remaining = book.matchLevel(&book.bidLevels[book.bidMax], pool, outRing, remaining, book.bidMax, symbol, trader, id)
-			if remaining > 0 && book.bidLevels[book.bidMax].headSlot == 0 {
+			if book.bidLevels[book.bidMax].headSlot == 0 {
 				book.updateBidMax()
 			}
 		}

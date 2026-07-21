@@ -34,8 +34,8 @@ func NewMatchingEngine() *MatchingEngine {
 
 // Add a new limit order to the order book
 func (e *MatchingEngine) Limit(symbol Symbol, side Side, price Price, size Size, trader TraderID) {
-	if price == 0 || size == 0 || price >= MAX_PRICE_LEVELS {
-		e.outputRing.Push(OutputEvent{eventType: REJECT_EVENT})
+	if price == 0 || size == 0 || price >= MAX_PRICE_LEVELS || symbol >= MAX_SYMBOLS {
+		e.outputRing.Push(OutputEvent{eventType: REJECT_EVENT, orderID: 0, trader: trader})
 		return
 	}
 
@@ -69,7 +69,7 @@ func (e *MatchingEngine) Cancel(id OrderID) {
 	slot := Slot(id & SLOT_MASK)
 
 	if !e.pool.isValid(slot) {
-		e.outputRing.Push(OutputEvent{eventType: REJECT_EVENT})
+		e.outputRing.Push(OutputEvent{eventType: REJECT_EVENT, orderID: id})
 		return
 	}
 
@@ -77,7 +77,7 @@ func (e *MatchingEngine) Cancel(id OrderID) {
 
 	// Check if the order is valid and not already canceled
 	if order.gen != Gen(id>>SLOT_BITS) || order.size == 0 {
-		e.outputRing.Push(OutputEvent{eventType: REJECT_EVENT})
+		e.outputRing.Push(OutputEvent{eventType: REJECT_EVENT, orderID: id})
 		return
 	}
 
