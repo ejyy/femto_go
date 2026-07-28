@@ -18,7 +18,6 @@ const (
 
 // Order with intrusive linked list for FIFO queues (price/time priority)
 type Order struct {
-	id       OrderID
 	price    Price
 	size     Size
 	gen      Gen  // Generation counter for this order (to avoid stale references)
@@ -63,7 +62,7 @@ func (book *OrderBook) level(side Side, price Price) *PriceLevel {
 	return &book.askLevels[price]
 }
 
-func (book *OrderBook) add(pool *OrderPool, side Side, price Price, id OrderID, slot Slot, size Size, symbol Symbol) {
+func (book *OrderBook) add(pool *OrderPool, side Side, price Price, slot Slot, size Size, symbol Symbol) {
 	level := book.level(side, price)
 
 	if side == Bid {
@@ -77,7 +76,6 @@ func (book *OrderBook) add(pool *OrderPool, side Side, price Price, id OrderID, 
 	}
 
 	order := pool.get(slot)
-	order.id = id
 	order.size = size
 	order.side = side
 	order.price = price
@@ -117,7 +115,7 @@ func (book *OrderBook) matchLevel(level *PriceLevel, pool *OrderPool, outRing *R
 		outRing.Push(OutputEvent{
 			eventType:      EXECUTION_EVENT,
 			orderID:        id,
-			counterOrderID: counterOrder.id,
+			counterOrderID: OrderID(uint64(counterOrder.gen)<<SLOT_BITS | uint64(counterSlot)),
 			price:          price,
 			size:           fillSize,
 			trader:         trader,
