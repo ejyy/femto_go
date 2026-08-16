@@ -13,6 +13,7 @@ const (
 	CANCEL_EVENT                     // Order cancellation
 	EXECUTION_EVENT                  // Trade execution
 	REJECT_EVENT                     // Order rejection
+	ERROR_EVENT                      // Matching engine error event
 )
 
 // Output event sent by matching engine to report something (eg. Order, execution)

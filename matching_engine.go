@@ -4,10 +4,10 @@ const (
 	MAX_SYMBOLS      = 1 << 8  // 256 trading symbols
 	MAX_PRICE_LEVELS = 1 << 14 // 16,384 price ticks
 
-	SLOT_BITS = 26
+	SLOT_BITS = 24
 	SLOT_MASK = (1 << SLOT_BITS) - 1
 
-	MAX_ORDERS = SLOT_MASK // 67M total orders
+	MAX_ORDERS = SLOT_MASK // 16M total orders
 )
 
 type MatchingEngine struct {
@@ -40,7 +40,11 @@ func (e *MatchingEngine) Limit(symbol Symbol, side Side, price Price, size Size,
 	}
 
 	// Allocate a new order slot and generate a unique order ID
-	slot, gen := e.pool.alloc()
+	slot, gen, ok := e.pool.alloc()
+	if !ok {
+		e.outputRing.Push(OutputEvent{eventType: ERROR_EVENT, orderID: 0, trader: trader})
+		return
+	}
 	newOrderID := OrderID(uint64(gen)<<SLOT_BITS | uint64(slot))
 
 	e.outputRing.Push(OutputEvent{
