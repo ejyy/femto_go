@@ -71,7 +71,7 @@ func main() {
 		}
 
 		engine.inputRing.Push(cmd)
-		atomic.AddUint64(&totalInputs, 1)
+		totalInputs++
 	}
 
 	// Wait until all outputs drained
