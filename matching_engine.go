@@ -7,7 +7,7 @@ const (
 	SLOT_BITS = 26
 	SLOT_MASK = (1 << SLOT_BITS) - 1
 
-	MAX_ORDERS = 1 << SLOT_BITS // 67M total orders
+	MAX_ORDERS = SLOT_MASK // 67M total orders
 )
 
 type MatchingEngine struct {
