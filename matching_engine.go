@@ -1,13 +1,13 @@
 package main
 
 const (
-	MAX_SYMBOLS      = 1 << 8  // 256 trading symbols
-	MAX_PRICE_LEVELS = 1 << 14 // 16,384 price ticks
+	MAX_SYMBOLS      = 1 << 8  // Number of trading symbols (256)
+	MAX_PRICE_LEVELS = 1 << 14 // Number of discrete price levels [ticks] (16,384)
 
 	SLOT_BITS = 24
 	SLOT_MASK = (1 << SLOT_BITS) - 1
 
-	MAX_ORDERS = SLOT_MASK // 16M total orders
+	MAX_ORDERS = SLOT_MASK // Number of orderpool slots (16M)
 )
 
 type MatchingEngine struct {
@@ -32,8 +32,9 @@ func NewMatchingEngine() *MatchingEngine {
 	return e
 }
 
-// Add a new limit order to the order book
+// Submits a new limit order, matching against the opposite side before adding unfilled quantity to the book
 func (e *MatchingEngine) Limit(symbol Symbol, side Side, price Price, size Size, trader TraderID) {
+	// Rejects malformed orders
 	if price == 0 || size == 0 || price >= MAX_PRICE_LEVELS || symbol >= MAX_SYMBOLS {
 		e.outputRing.Push(OutputEvent{eventType: REJECT_EVENT, orderID: 0, trader: trader})
 		return
@@ -59,15 +60,18 @@ func (e *MatchingEngine) Limit(symbol Symbol, side Side, price Price, size Size,
 
 	book := &e.books[symbol]
 
+	// Match against existing orders
 	remaining := book.match(e.pool, e.outputRing, size, symbol, side, price, trader, newOrderID)
 
+	// Add any unfilled quantity to the book
 	if remaining > 0 {
 		book.add(e.pool, side, price, slot, remaining, symbol)
 	} else {
-		e.pool.free(slot) // Free the slot if the order was fully matched
+		e.pool.free(slot) // Free the slot as the order was fully matched
 	}
 }
 
+// Removes a live order
 func (e *MatchingEngine) Cancel(id OrderID) {
 	// Extract the slot from the order ID
 	slot := Slot(id & SLOT_MASK)
@@ -87,6 +91,7 @@ func (e *MatchingEngine) Cancel(id OrderID) {
 
 	book := &e.books[order.symbol]
 
+	// Remove order from its price level and return slot to pool
 	level := book.level(order.side, order.price)
 	level.remove(e.pool, slot)
 

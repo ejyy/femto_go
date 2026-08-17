@@ -13,7 +13,7 @@ const (
 	CANCEL_EVENT                     // Order cancellation
 	EXECUTION_EVENT                  // Trade execution
 	REJECT_EVENT                     // Order rejection
-	ERROR_EVENT                      // Matching engine error event
+	ERROR_EVENT                      // Matching engine error
 )
 
 // Output event sent by matching engine to report something (eg. Order, execution)
@@ -39,7 +39,7 @@ type InputCommand struct {
 	side      Side
 }
 
-// StartInputDistributor distributes input commands to the matching engine
+// Distributes input commands to the matching engine
 func (e *MatchingEngine) StartInputDistributor() {
 	buf := make([]InputCommand, DISTRIBUTOR_BUFFER)
 	for {
@@ -56,7 +56,7 @@ func (e *MatchingEngine) StartInputDistributor() {
 	}
 }
 
-// StartOutputDistributor distributes output events from the matching engine
+// Distributes output events from the matching engine
 func (e *MatchingEngine) StartOutputDistributor(callbackFunc func(OutputEvent)) {
 	buf := make([]OutputEvent, DISTRIBUTOR_BUFFER)
 	for {
