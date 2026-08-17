@@ -1,5 +1,7 @@
 package main
 
+// Consider a pricelevel pool in chunks (eg. 256 pricelevels per chunk) like orderpool, to cover wider price range universe
+
 // A FIFO queue of orders at a specific price
 type PriceLevel struct {
 	headSlot Slot // First order (oldest)
