@@ -17,11 +17,17 @@ type RingBuffer[T any] struct {
 	// Padding arrays to ensure writePos and readPos are on separate cache lines.
 	// This prevents "false sharing," where different cores repeatedly write to
 	// memory that shares the same cache line, causing performance degradation.
-	_pad1    [CACHE_LINE_SIZE - 8]byte // padding before writePos
-	writePos uint64                    // Current write index (incremented by producer)
-	_pad2    [CACHE_LINE_SIZE - 8]byte // padding before readPos
-	readPos  uint64                    // Current read index (incremented by consumer)
-	_pad3    [CACHE_LINE_SIZE - 8]byte // padding after readPos
+	// Procuder-owned cached line
+	_pad1      [CACHE_LINE_SIZE - 16]byte // padding before writePos
+	writePos   uint64                     // Current write index (incremented by producer)
+	cachedRead uint64                     // Cached read index to reduce atomic loads
+
+	// Consumer-owned cached line
+	_pad2       [CACHE_LINE_SIZE - 16]byte // padding before readPos
+	readPos     uint64                     // Current read index (incremented by consumer)
+	cachedWrite uint64                     // Cached write index to reduce atomic loads
+
+	_pad3 [CACHE_LINE_SIZE]byte // padding after readPos
 }
 
 // NewRingBuffer allocates and returns a pointer to a new ring buffer instance.
@@ -36,22 +42,22 @@ func NewRingBuffer[T any]() *RingBuffer[T] {
 // This is a busy-waiting (spin) implementation if the buffer is full.
 // Only safe for a single producer; concurrent Push calls would be unsafe.
 func (r *RingBuffer[T]) Push(v T) {
+	write := r.writePos
+
 	for {
-		// Atomically load the current write and read positions
-		write := atomic.LoadUint64(&r.writePos)
-		read := atomic.LoadUint64(&r.readPos)
+		if write-r.cachedRead >= RING_SIZE {
+			r.cachedRead = atomic.LoadUint64(&r.readPos) // Refresh cached read position
 
-		// Calculate available space by checking difference between write and read indices
-		if write-read < RING_SIZE { // There is space in the buffer
-			// Compute actual index using bitwise AND with mask (fast modulo)
-			r.buffer[write&RING_MASK] = v
-			// Publish the new write position atomically
-			atomic.StoreUint64(&r.writePos, write+1)
-			return
+			if write-r.cachedRead >= RING_SIZE {
+				// Buffer is full; busy-wait until space becomes available
+				continue
+			}
 		}
-
-		// If buffer is full, loop (busy-wait) until space becomes available
+		break
 	}
+
+	r.buffer[write&RING_MASK] = v
+	atomic.StoreUint64(&r.writePos, write+1)
 }
 
 // Read extracts up to len(out) elements from the buffer.
@@ -59,29 +65,28 @@ func (r *RingBuffer[T]) Push(v T) {
 // This is a busy-waiting (spin) implementation if the buffer is empty.
 // Only safe for a single consumer; concurrent Read calls would be unsafe.
 func (r *RingBuffer[T]) Read(out []T) uint32 {
+	read := r.readPos
+
+	var available uint64
+
 	for {
-		// Atomically load the current write and read positions
-		write := atomic.LoadUint64(&r.writePos)
-		read := atomic.LoadUint64(&r.readPos)
-
-		// Calculate how many elements are available to read
-		available := write - read
-		if available == 0 {
-			// If buffer is empty, loop (busy-wait) until elements are written
-			continue
+		if read >= r.cachedWrite {
+			r.cachedWrite = atomic.LoadUint64(&r.writePos) // Refresh cached write position
 		}
 
-		// Determine how many elements we can actually read
-		count := min(available, uint64(len(out)))
-
-		// Copy elements from buffer into output slice
-		for i := uint64(0); i < count; i++ {
-			// Use bitwise AND with mask to wrap around the circular buffer
-			out[i] = r.buffer[(read+i)&RING_MASK]
+		available = r.cachedWrite - read
+		if available > 0 {
+			break
 		}
-
-		// Update read position to mark elements as consumed
-		atomic.StoreUint64(&r.readPos, read+count)
-		return uint32(count) // Return the number of elements read
 	}
+
+	count := min(available, uint64(len(out)))
+
+	for i := range count {
+		out[i] = r.buffer[(read+i)&RING_MASK]
+	}
+
+	atomic.StoreUint64(&r.readPos, read+count)
+
+	return uint32(count)
 }
